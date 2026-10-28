@@ -1,31 +1,54 @@
-import { useId } from 'react'
+import { useEffect, useState } from 'react'
 
-// Vita 워드마크(public/brand/vita-logo.svg 와 같은 도형) — 글자는 currentColor 라 다크 모드에서 밝아지고,
-// a 는 기둥 없이 오렌지 단면(껍질 고리 + 과육 6조각). 과육 사이 틈은 마스크로 뚫어 바탕이 비친다
-export function VitaLogo({ height = 20 }: { height?: number }) {
-  const mask = `vita-pulp-${useId().replace(/:/g, '')}`
+// Vita 워드마크 두 가지(public/brand/vita-logo-a·e.svg 와 같은 도형) — 소문자 둥근 단일선. 글자는 currentColor(다크 모드에서 밝아짐)
+//   a: i 점이 오렌지 동그라미 · e: i 점이 오렌지 잎(새싹)
+// 사이드바 로고를 누르면 바뀌고(이 브라우저에 기억), 탭 아이콘도 같이 바뀐다
+
+export type LogoVariant = 'a' | 'e'
+const KEY = 'worklog-logo'
+
+function readVariant(): LogoVariant {
+  try {
+    return localStorage.getItem(KEY) === 'e' ? 'e' : 'a'
+  } catch {
+    return 'a'
+  }
+}
+
+export function useLogoVariant(): [LogoVariant, () => void] {
+  const [variant, setVariant] = useState<LogoVariant>(readVariant)
+  useEffect(() => {
+    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+    if (link) link.href = `/brand/vita-mark-${variant}.svg`
+  }, [variant])
+  const toggle = () => {
+    const next = variant === 'a' ? 'e' : 'a'
+    setVariant(next)
+    try {
+      localStorage.setItem(KEY, next)
+    } catch {
+      // 기억 못 해도 이번엔 바뀐다
+    }
+  }
+  return [variant, toggle]
+}
+
+const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 12, strokeLinecap: 'round', strokeLinejoin: 'round' } as const
+
+export function VitaLogo({ height = 20, variant = 'a' }: { height?: number; variant?: LogoVariant }) {
   return (
-    <svg viewBox="-4 2 198 106" height={height} role="img" aria-label="Vita" style={{ display: 'block' }}>
-      <defs>
-        <mask id={mask}>
-          <circle cx="158" cy="69" r="25.5" fill="white" />
-          <g stroke="black" strokeWidth="2.6">
-            <line x1="158" y1="40" x2="158" y2="98" />
-            <line x1="158" y1="40" x2="158" y2="98" transform="rotate(60 158 69)" />
-            <line x1="158" y1="40" x2="158" y2="98" transform="rotate(120 158 69)" />
-          </g>
-          <circle cx="158" cy="69" r="3.6" fill="black" />
-        </mask>
-      </defs>
-      <g fill="currentColor">
-        <polygon points="0,10 14,10 32,80 50,10 64,10 40,100 24,100" />
-        <rect x="72" y="38" width="12" height="62" rx="1" />
-        <circle cx="78" cy="19" r="8" />
-        <rect x="100" y="20" width="12" height="80" rx="1" />
-        <rect x="92" y="38" width="30" height="11" rx="1" />
-      </g>
-      <path fill="var(--accent)" fillRule="evenodd" d="M158 37a32 32 0 1 0 0.01 0zM158 40.5a28.5 28.5 0 1 1 -0.01 0z" />
-      <circle cx="158" cy="69" r="25.5" mask={`url(#${mask})`} style={{ fill: 'color-mix(in srgb, var(--accent) 70%, #fff)' }} />
+    <svg viewBox="-6 10 182 98" height={height} role="img" aria-label="Vita" style={{ display: 'block' }}>
+      <path d="M2 52L22 100L42 52" {...stroke} />
+      <path d="M60 52V100" {...stroke} />
+      <path d="M84 30V86q0 14 14 14h4" {...stroke} />
+      <path d="M74 52H98" {...stroke} />
+      <circle cx="138" cy="76" r="25" fill="none" stroke="currentColor" strokeWidth="12" />
+      <path d="M163 52V100" {...stroke} />
+      {variant === 'a' ? (
+        <circle cx="60" cy="30" r="8" fill="var(--accent)" />
+      ) : (
+        <path d="M58 38C56 24 68 16 78 16C78 28 68 38 58 38Z" fill="var(--accent)" />
+      )}
     </svg>
   )
 }
