@@ -1,0 +1,51 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.0.0'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.worklog'
+version = '0.1.0'
+description = 'claude-worklog'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    // 로컬 단일 사용자 도구라 별도 DB 서버 없이 파일 하나(~/.claude-worklog/worklog.db)에 쌓는다
+    implementation 'org.xerial:sqlite-jdbc:3.50.3.0'
+    // 리포트 마크다운 → claude.ai 공유용 HTML 내보내기
+    implementation 'org.commonmark:commonmark:0.24.0'
+    implementation 'org.commonmark:commonmark-ext-gfm-tables:0.24.0'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// 프론트 빌드 산출물(front/dist)을 jar 의 static 으로 묶는다. ./build.sh 가 먼저 front 를 빌드한다
+tasks.named('processResources') {
+    from('../front/dist') {
+        into 'static'
+    }
+}

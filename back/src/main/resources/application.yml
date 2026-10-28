@@ -1,0 +1,76 @@
+server:
+  port: 4100
+  # 대화 원문이 담긴 도구라 외부에서 접속 못 하게 루프백에만 연다
+  address: 127.0.0.1
+
+spring:
+  application:
+    name: worklog
+  datasource:
+    url: jdbc:sqlite:${worklog.data-dir}/worklog.db
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      maximum-pool-size: 4
+      connection-init-sql: PRAGMA busy_timeout=10000
+  sql:
+    init:
+      mode: always
+      continue-on-error: false
+
+worklog:
+  claude-home: ${user.home}/.claude
+  data-dir: ${user.home}/.claude-worklog
+  # claude 실행 파일. 절대경로가 아니면 로그인 셸(zsh -lc 'command -v claude')에서 찾는다 — install.sh 가 찾은 경로를 넘긴다
+  claude-bin: claude
+  summary-model: sonnet
+  # 세션 → 주간 업무 자동 분류. 가벼운 판단이라 빠른 모델로, 새 작업이 있을 때만 이 간격으로 돈다
+  classify-model: haiku
+  classify-interval: 1h
+  # 세션은 사용자가 할 일에 직접 연결한다. true 면 매시간·09시 요약 뒤·리포트 전에 AI 가 남은 것을 자동으로 붙인다
+  auto-classify: false
+  zone: Asia/Seoul
+  # 이벤트 사이 간격이 이보다 짧으면 이어서 작업한 시간으로 센다
+  idle-gap: 15m
+  collect-interval: 10m
+  # 커밋은 세션 원본 보존기간(30일)과 무관하게 이만큼 거슬러 올라가 모은다
+  git-lookback-days: 180
+  # 기동 시·매일 09시에 이 기간 안의 지난 날 중 요약이 없는 날을 채운다
+  summary-lookback-days: 30
+  # false 면 기동 시·09시 자동 요약을 끈다(화면 버튼으로만 생성)
+  auto-summary: true
+
+  # 카테고리, 저장소 → 카테고리, 반복 업무 세션, 주간보고 갈래는 화면의 '설정'에서 바꾼다(DB 에 저장)
+  # DB 백업 — 매일 스냅샷(gzip)을 맥 안에 두고, 암호화(openssl AES-256 + PBKDF2)한 사본을 iCloud Drive 에 둔다
+  # 암호는 macOS 키체인 'worklog-backup' 항목. 없으면 처음 백업 때 만들어 넣는다(./backup-password.sh 로 확인)
+  backup:
+    enabled: true
+    local-dir: ${worklog.data-dir}/backups
+    mirror-dir: ${user.home}/Library/Mobile Documents/com~apple~CloudDocs/Worklog-backup
+    keep-daily: 14
+    keep-weekly: 8
+    keep-monthly: 12
+    keychain-service: worklog-backup
+  # API 환산 비용 계산용 단가($/1M 토큰). 구독 사용자는 실제 청구액이 아니라 "API 였다면" 추정치다
+  # 캐시 쓰기는 입력 단가 × 1.25(5분) / × 2(1시간). 날짜가 붙은 모델 id 는 앞부분이 일치하는 키를 쓴다
+  # 2026-10 공식 단가. 가격이 바뀌면 여기만 고치면 지난 기록까지 다시 계산된다
+  pricing:
+    claude-fable-5-1: { input: 10.0, output: 50.0, cache-read: 0.25 }
+    claude-mythos-5-1: { input: 10.0, output: 50.0, cache-read: 0.25 }
+    claude-fable-5: { input: 10.0, output: 50.0, cache-read: 1.0 }
+    claude-mythos-5: { input: 10.0, output: 50.0, cache-read: 1.0 }
+    claude-opus-5-5: { input: 4.0, output: 20.0, cache-read: 0.2 }
+    claude-opus-5: { input: 5.0, output: 25.0, cache-read: 0.5 }
+    claude-opus-4-8: { input: 5.0, output: 25.0, cache-read: 0.5 }
+    claude-opus-4-7: { input: 5.0, output: 25.0, cache-read: 0.5 }
+    claude-opus-4-6: { input: 5.0, output: 25.0, cache-read: 0.5 }
+    claude-sonnet-5-5: { input: 2.0, output: 10.0, cache-read: 0.2 }
+    claude-sonnet-5: { input: 2.0, output: 10.0, cache-read: 0.2 }
+    claude-sonnet-4-6: { input: 3.0, output: 15.0, cache-read: 0.3 }
+    claude-haiku-5-5: { input: 0.1, output: 0.5, cache-read: 0.01 }
+    claude-haiku-4-5: { input: 1.0, output: 5.0, cache-read: 0.1 }
+
+logging:
+  file:
+    name: ${worklog.data-dir}/logs/worklog.log
+  level:
+    com.worklog: INFO

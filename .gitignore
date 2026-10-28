@@ -1,0 +1,7 @@
+back/build/
+back/.gradle/
+front/node_modules/
+front/dist/
+.idea/
+*.iml
+.DS_Store
