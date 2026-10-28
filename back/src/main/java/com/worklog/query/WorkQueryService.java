@@ -128,7 +128,8 @@ public class WorkQueryService {
                 lastDay, active, activeDays.size(),
                 days.stream().mapToInt(SessionDayRow::prompts).sum(),
                 days.stream().mapToInt(SessionDayRow::edits).sum(),
-                status, busy, lastSummary, u.total(ids::contains).costUsd());
+                status, busy, lastSummary, u.total(ids::contains).costUsd(),
+                task.sessions().stream().map(SessionRow::tool).distinct().sorted().toList());
     }
 
     public List<CalendarDay> calendar(YearMonth month) {
@@ -377,9 +378,9 @@ public class WorkQueryService {
 
     private static SessionInfo info(SessionRow s) {
         String original = new SessionRow(s.id(), s.customTitle(), s.aiTitle(), s.firstPrompt(), null, s.cwd(),
-                s.project(), s.gitBranch(), s.continuedIn(), s.firstAt(), s.lastAt(), s.hidden()).displayTitle();
+                s.project(), s.gitBranch(), s.continuedIn(), s.firstAt(), s.lastAt(), s.hidden(), s.source()).displayTitle();
         return new SessionInfo(s.id(), s.displayTitle(), original, s.titleOverride() != null, s.cwd(), s.project(),
-                s.gitBranch(), s.firstAt(), s.lastAt(), s.hidden());
+                s.gitBranch(), s.firstAt(), s.lastAt(), s.hidden(), s.tool());
     }
 
     private static Set<String> ids(Task task) {

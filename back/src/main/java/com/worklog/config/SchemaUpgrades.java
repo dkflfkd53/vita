@@ -22,6 +22,8 @@ public class SchemaUpgrades {
     void upgrade() {
         addColumn("work_item", "memo", "TEXT");
         addColumn("category", "color", "TEXT");
+        // claude | codex — 비어 있으면 claude(예전 기록)
+        addColumn("session", "source", "TEXT");
         // 고정 연결은 건 날부터만 적용(과거 작업 소급 방지). 컬럼 생기기 전 고정은 모두 2026-10-26 에 만든 것
         if (addColumn("session_pin", "pinned_from", "TEXT")) {
             jdbc.sql("UPDATE session_pin SET pinned_from = '2026-10-26' WHERE pinned_from IS NULL").update();

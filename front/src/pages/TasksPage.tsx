@@ -6,7 +6,7 @@ import { api } from '../api/client'
 import type { TaskStatus, TaskSummary, TaskWork, WorkStatus } from '../api/types'
 import { Icon } from '../components/Icon'
 import { StatusIcon } from '../components/workFields'
-import { ErrorBox, Loading, ProjectLabel, StatusDot, dotVariant } from '../components/common'
+import { ErrorBox, Loading, ProjectLabel, StatusDot, ToolBadge, dotVariant } from '../components/common'
 import { fmtDateTime, fmtRelative, fmtShort, fmtUsd } from '../lib/format'
 
 type Filter = 'active' | 'all' | 'idle'
@@ -120,7 +120,7 @@ export function TasksPage({ embedded }: { embedded?: boolean } = {}) {
       <div className="page-head">
         <div>
           <h1>세션</h1>
-          <p>Claude Code 세션을 제목 기준으로 묶었어요. 이어진 세션과 제목이 같은 세션은 하나로 합쳐져요.</p>
+          <p>Claude Code·Codex 세션을 제목 기준으로 묶었어요. 이어진 세션과 제목이 같은 세션은 하나로 합쳐져요.</p>
         </div>
       </div>
       {body}
@@ -138,6 +138,7 @@ function TaskRow({ t }: { t: TaskSummary }) {
           {t.projects.slice(0, 2).map((p) => (
             <ProjectLabel key={p} project={p} />
           ))}
+          <ToolBadge tools={t.tools} />
           {t.sessionCount > 1 && (
             <span className="subtle" style={{ fontSize: 12, fontWeight: 400 }}>
               세션 {t.sessionCount}

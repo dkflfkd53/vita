@@ -23,6 +23,7 @@ public class CollectScheduler {
     private final GitCommitCollector commits;
     private final UsageCollector usage;
     private final AgentCollector agent;
+    private final CodexCollector codex;
     private final ReentrantLock lock = new ReentrantLock();
     private final AtomicReference<Instant> lastCollectedAt = new AtomicReference<>();
 
@@ -51,10 +52,11 @@ public class CollectScheduler {
             int newCommits = commits.collectAll();
             int responses = usage.collectAll();
             int agentItems = agent.collectAll();
+            int codexLines = codex.collectAll();
             lastCollectedAt.set(Instant.now());
-            if (stats.changedFiles() > 0 || newCommits > 0 || responses > 0 || agentItems > 0) {
-                log.info("수집 완료: 세션 파일 {}개·{}줄, 커밋 {}건, 응답 사용량 {}줄, 도구·턴 {}건 ({}ms)", stats.changedFiles(),
-                        stats.lines(), newCommits, responses, agentItems, System.currentTimeMillis() - started);
+            if (stats.changedFiles() > 0 || newCommits > 0 || responses > 0 || agentItems > 0 || codexLines > 0) {
+                log.info("수집 완료: 세션 파일 {}개·{}줄, 커밋 {}건, 응답 사용량 {}줄, 도구·턴 {}건, Codex {}줄 ({}ms)", stats.changedFiles(),
+                        stats.lines(), newCommits, responses, agentItems, codexLines, System.currentTimeMillis() - started);
             }
             return true;
         } catch (Exception e) {

@@ -7,7 +7,6 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -24,8 +23,8 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * 개선 제안을 실제로 적어 넣을 곳. Claude Code 가 매 세션 읽어 들이는 파일들이다.
  * <ul>
- *   <li>global — ~/.claude/CLAUDE.md (모든 프로젝트)</li>
- *   <li>repo:이름 — 저장소 루트 CLAUDE.md (그 저장소에서만, 커밋 대상)</li>
+ *   <li>global — ~/.claude/CLAUDE.md (모든 프로젝트), codex-global — ~/.codex/AGENTS.md (Codex)</li>
+ *   <li>repo:이름 — 저장소 루트 CLAUDE.md, agents:이름 — 저장소 루트 AGENTS.md(Codex) (그 저장소에서만, 커밋 대상)</li>
  *   <li>memory:이름 — 그 저장소의 자동 메모리(~/.claude/projects/…/memory). feedback 파일 하나 + MEMORY.md 색인 한 줄</li>
  * </ul>
  * 쓰기는 덧붙이기만 한다. 넣은 자리에 표식(&lt;!-- vita:insight-번호 --&gt;)을 남겨 적용 확인·되돌리기에 쓴다.
@@ -43,6 +42,10 @@ public class InsightTargets {
         List<Target> out = new ArrayList<>();
         Path global = props.claudeHome().resolve("CLAUDE.md");
         out.add(new Target("global", "전역 CLAUDE.md (모든 프로젝트)", tilde(global), Files.exists(global), "claude-md"));
+        Path codexGlobal = codexHome().resolve("AGENTS.md");
+        if (Files.isDirectory(codexHome())) {
+            out.add(new Target("codex-global", "Codex 전역 AGENTS.md (모든 프로젝트)", tilde(codexGlobal), Files.exists(codexGlobal), "claude-md"));
+        }
         for (String repo : scope.repos()) {
             Optional<Path> root = repoRoot(repo);
             if (root.isEmpty()) {
@@ -54,6 +57,10 @@ public class InsightTargets {
             }
             Path md = root.get().resolve("CLAUDE.md");
             out.add(new Target("repo:" + repo, repo + "/CLAUDE.md (저장소, 커밋 대상)", tilde(md), Files.exists(md), "claude-md"));
+            if (Files.isDirectory(codexHome())) {
+                Path agents = root.get().resolve("AGENTS.md");
+                out.add(new Target("agents:" + repo, repo + "/AGENTS.md (Codex, 저장소)", tilde(agents), Files.exists(agents), "claude-md"));
+            }
         }
         return out;
     }
@@ -164,6 +171,9 @@ public class InsightTargets {
         if ("global".equals(targetKey)) {
             return Optional.of(props.claudeHome().resolve("CLAUDE.md"));
         }
+        if ("codex-global".equals(targetKey)) {
+            return Optional.of(codexHome().resolve("AGENTS.md"));
+        }
         int colon = targetKey.indexOf(':');
         if (colon < 0) {
             return Optional.empty();
@@ -175,9 +185,14 @@ public class InsightTargets {
         }
         return repoRoot(repo).map(root -> switch (kind) {
             case "repo" -> root.resolve("CLAUDE.md");
+            case "agents" -> root.resolve("AGENTS.md");
             case "memory" -> memoryDir(root).resolve("feedback_vita_insight_%d.md".formatted(id));
             default -> null;
         });
+    }
+
+    private Path codexHome() {
+        return props.codexHome() != null ? props.codexHome() : Path.of(System.getProperty("user.home"), ".codex");
     }
 
     private Optional<Path> repoRoot(String name) {

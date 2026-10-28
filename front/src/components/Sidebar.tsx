@@ -39,7 +39,7 @@ export function Sidebar() {
         <button type="button" className="brand-logo" onClick={toggleLogo} title="눌러서 로고 바꿔 보기 (A 동그라미 점 / E 새싹 점)">
           <VitaLogo height={24} variant={logo} />
         </button>
-        <small>Claude Code 작업 기록</small>
+        <small>Claude Code·Codex 작업 기록</small>
       </div>
 
       <nav className="nav">

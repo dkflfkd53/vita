@@ -26,7 +26,7 @@ class InsightTargetsTest {
 
     private InsightTargets targets() {
         WorklogProperties props = new WorklogProperties(home, home.resolve("data"), "claude", "sonnet", "haiku", null, false,
-                ZoneId.of("Asia/Seoul"), Duration.ofMinutes(15), Duration.ofMinutes(10), 0, 0, false, Map.of(), null, Map.of(), null);
+                ZoneId.of("Asia/Seoul"), Duration.ofMinutes(15), Duration.ofMinutes(10), 0, 0, false, Map.of(), null, Map.of(), null, null);
         return new InsightTargets(props, null, null);
     }
 
@@ -71,7 +71,7 @@ class InsightTargetsTest {
         jdbc.sql("CREATE TABLE repo (root TEXT PRIMARY KEY, name TEXT NOT NULL)").update();
         jdbc.sql("INSERT INTO repo VALUES (?, 'my-app')").param(repo.toString()).update();
         WorklogProperties props = new WorklogProperties(home, home.resolve("data"), "claude", "sonnet", "haiku", null, false,
-                ZoneId.of("Asia/Seoul"), Duration.ofMinutes(15), Duration.ofMinutes(10), 0, 0, false, Map.of(), null, Map.of(), null);
+                ZoneId.of("Asia/Seoul"), Duration.ofMinutes(15), Duration.ofMinutes(10), 0, 0, false, Map.of(), null, Map.of(), null, null);
         jdbc.sql("CREATE TABLE setting (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)").update();
         SettingsService settings = new SettingsService(jdbc, props);
         settings.saveProjects(List.of(new ProjectRule("my-app", "앱")));

@@ -108,7 +108,7 @@ export function CalendarPage() {
       <div className="page-head">
         <div>
           <h1>세션</h1>
-          <p>Claude Code 세션에서 진행한 작업을 날짜별·세션별로 모아 봐요. 며칠 이어진 세션은 막대로 이어져요.</p>
+          <p>Claude Code·Codex 세션에서 진행한 작업을 날짜별·세션별로 모아 봐요. 며칠 이어진 세션은 막대로 이어져요.</p>
         </div>
       </div>
 

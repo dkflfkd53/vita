@@ -23,6 +23,8 @@ final class SessionAccumulator {
     String project;
     String gitBranch;
     String continuedIn;
+    /** claude | codex — 어느 도구의 세션인가 */
+    String source;
     Instant firstAt;
     Instant lastAt;
     Instant lastEventAt;

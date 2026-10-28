@@ -72,15 +72,16 @@ public class IngestStore {
     private void flushSession(SessionAccumulator acc) {
         jdbc.sql("""
                 INSERT INTO session (id, custom_title, ai_title, first_prompt, cwd, project, git_branch, continued_in,
-                                     first_at, last_at, last_event_at)
+                                     first_at, last_at, last_event_at, source)
                 VALUES (:id, :customTitle, :aiTitle, :firstPrompt, :cwd, :project, :gitBranch, :continuedIn,
-                        :firstAt, :lastAt, :lastEventAt)
+                        :firstAt, :lastAt, :lastEventAt, :source)
                 ON CONFLICT(id) DO UPDATE SET
                     custom_title = excluded.custom_title, ai_title = excluded.ai_title,
                     first_prompt = excluded.first_prompt, cwd = excluded.cwd,
                     project = COALESCE(excluded.project, session.project), git_branch = excluded.git_branch,
                     continued_in = excluded.continued_in, first_at = excluded.first_at,
-                    last_at = excluded.last_at, last_event_at = excluded.last_event_at
+                    last_at = excluded.last_at, last_event_at = excluded.last_event_at,
+                    source = COALESCE(excluded.source, session.source)
                 """)
                 .param("id", acc.id)
                 .param("customTitle", acc.customTitle)
@@ -93,6 +94,7 @@ public class IngestStore {
                 .param("firstAt", str(acc.firstAt))
                 .param("lastAt", str(acc.lastAt))
                 .param("lastEventAt", str(acc.lastEventAt))
+                .param("source", acc.source)
                 .update();
 
         acc.days.forEach((day, delta) -> jdbc.sql("""

@@ -179,6 +179,7 @@ function SessionRow({ session }: { session: SessionInfo }) {
         </div>
       )}
       <div className="meta">
+        {session.tool === 'codex' && <>Codex · </>}
         {session.renamed && <>원래 이름: {session.originalTitle} · </>}
         {session.gitBranch && <>{session.gitBranch} · </>}
         {fmtDateTime(session.firstAt)} ~ {fmtDateTime(session.lastAt)}

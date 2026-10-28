@@ -19,6 +19,8 @@ spring:
 
 worklog:
   claude-home: ${user.home}/.claude
+  # Codex CLI 를 쓰면 그 세션도 같이 모은다(없으면 건너뜀)
+  codex-home: ${user.home}/.codex
   data-dir: ${user.home}/.claude-worklog
   # claude 실행 파일. 절대경로가 아니면 로그인 셸(zsh -lc 'command -v claude')에서 찾는다 — install.sh 가 찾은 경로를 넘긴다
   claude-bin: claude

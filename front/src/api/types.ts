@@ -18,6 +18,8 @@ export interface TaskSummary {
   busy: boolean
   lastSummary: string | null
   costUsd: number
+  /** 이 작업을 한 도구들(claude·codex) */
+  tools: string[]
 }
 
 /** 작업(세션 묶음) → 가장 최근에 연결된 할 일 */
@@ -143,6 +145,8 @@ export interface SessionInfo {
   firstAt: string | null
   lastAt: string | null
   hidden: boolean
+  /** claude | codex */
+  tool: string
 }
 
 export interface TaskDay {
@@ -579,11 +583,18 @@ export interface WorkTextConfig {
   parts: WorkTextPartDef[]
 }
 
+/** AI 작성 도구 — claude(claude -p) | codex(codex exec) */
+export interface AiConfig {
+  engine: 'claude' | 'codex'
+  codexModel: string | null
+}
+
 export interface SettingsAll {
   categories: SettingCategory[]
   projects: ProjectRule[]
   routines: RoutineRule[]
   workText: WorkTextConfig
+  ai: AiConfig
   knownRepos: string[]
   /** 규칙으로 고를 만한 폴더(본 저장소 루트와 그 상위, ~ 로 줄임) */
   knownFolders: string[]

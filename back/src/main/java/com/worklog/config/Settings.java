@@ -35,8 +35,12 @@ public final class Settings {
     public record WorkTextConfig(WorkTextPart full, List<WorkTextPart> parts) {
     }
 
+    /** AI 작성(요약·리포트·주간보고·개선 제안)에 쓸 도구. engine = claude(claude -p) | codex(codex exec), codexModel 비우면 Codex 기본 */
+    public record AiConfig(String engine, String codexModel) {
+    }
+
     /** knownRepos = 본 저장소 이름, knownFolders = 규칙으로 고를 만한 폴더(본 저장소 루트와 그 상위, ~ 로 줄임) */
     public record All(List<Category> categories, List<ProjectRule> projects, List<RoutineRule> routines,
-                      WorkTextConfig workText, List<String> knownRepos, List<String> knownFolders) {
+                      WorkTextConfig workText, AiConfig ai, List<String> knownRepos, List<String> knownFolders) {
     }
 }

@@ -92,7 +92,7 @@ export function ObserverPage() {
       <div className="page-head">
         <div>
           <h1>AI 사용</h1>
-          <p>Claude 세션이 시간과 토큰을 어디에 쓰는지 보고, 규칙을 바꾼 뒤 실제로 나아졌는지 기록해요.</p>
+          <p>Claude Code·Codex 세션이 시간과 토큰을 어디에 쓰는지 보고, 규칙을 바꾼 뒤 실제로 나아졌는지 기록해요.</p>
         </div>
         {scopeSwitch}
       </div>

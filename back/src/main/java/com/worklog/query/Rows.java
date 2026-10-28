@@ -8,7 +8,12 @@ public final class Rows {
 
     public record SessionRow(String id, String customTitle, String aiTitle, String firstPrompt, String titleOverride,
                              String cwd, String project, String gitBranch, String continuedIn,
-                             String firstAt, String lastAt, boolean hidden) {
+                             String firstAt, String lastAt, boolean hidden, String source) {
+
+        /** claude | codex */
+        public String tool() {
+            return source == null ? "claude" : source;
+        }
 
         public String displayTitle() {
             for (String t : new String[]{titleOverride, customTitle, aiTitle, firstPrompt}) {

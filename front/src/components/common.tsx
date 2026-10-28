@@ -60,3 +60,9 @@ export function Loading() {
 export function ErrorBox({ error }: { error: unknown }) {
   return <div className="error-box">{error instanceof Error ? error.message : String(error)}</div>
 }
+
+/** 어느 AI 도구의 세션인가 — Claude 만이면 표시하지 않는다(기본) */
+export function ToolBadge({ tools }: { tools: string[] | undefined }) {
+  if (!tools || !tools.includes('codex')) return null
+  return <span className="tool-badge">{tools.includes('claude') ? 'Claude·Codex' : 'Codex'}</span>
+}

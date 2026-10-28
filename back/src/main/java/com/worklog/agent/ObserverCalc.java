@@ -52,10 +52,13 @@ public class ObserverCalc {
 
     /** 원래 즉시 끝나는 도구 — 2초 넘게 걸렸으면 넘친 만큼을 승인 대기로 본다 */
     private static final Set<String> INSTANT = Set.of("Read", "Write", "Edit", "NotebookEdit", "Grep", "Glob", "LS",
-            "ToolSearch", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet", "TodoWrite", "Skill");
+            "ToolSearch", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet", "TodoWrite", "Skill",
+            "apply_patch"); // Codex 파일 수정
+    /** 셸 명령 도구 — Claude Code 의 Bash, Codex 의 exec_command */
+    private static final Set<String> SHELL = Set.of("Bash", "exec_command");
     private static final long INSTANT_GRACE_MS = 2_000;
     /** 사용자에게 묻고 답을 기다리는 도구 — 걸린 시간 전체가 질문 응답 대기 */
-    private static final Set<String> ASK = Set.of("AskUserQuestion", "ExitPlanMode", "EnterPlanMode");
+    private static final Set<String> ASK = Set.of("AskUserQuestion", "ExitPlanMode", "EnterPlanMode", "request_user_input_async");
     /** 결과 없이 끝나지 않은 호출·백그라운드 등 이상치 상한 */
     private static final long TOOL_CAP_MS = Duration.ofMinutes(60).toMillis();
     private static final Pattern CORRECTION = Pattern.compile(
@@ -259,10 +262,10 @@ public class ObserverCalc {
         }).sorted(Comparator.comparingLong(ToolStat::totalSec).reversed()).toList();
     }
 
-    /** Bash 명령을 "./gradlew compileJava"·"npx tsc" 처럼 묶어 오래 걸린 순 */
+    /** 셸 명령(Bash·Codex exec_command)을 "./gradlew compileJava"·"npx tsc" 처럼 묶어 오래 걸린 순 */
     public List<CommandStat> slowCommands(Data d, int limit) {
         Map<String, List<ToolCallRow>> by = d.tools().stream()
-                .filter(c -> "Bash".equals(c.tool()) && c.target() != null)
+                .filter(c -> SHELL.contains(c.tool()) && c.target() != null)
                 .collect(Collectors.groupingBy(c -> signature(c.target())));
         return by.entrySet().stream().map(e -> {
             List<ToolCallRow> l = e.getValue();
@@ -309,7 +312,7 @@ public class ObserverCalc {
 
     public List<ErrorSample> errors(Data d, int limit) {
         Map<String, List<ToolCallRow>> by = d.tools().stream().filter(c -> "error".equals(c.status()))
-                .collect(Collectors.groupingBy(c -> c.tool() + "|" + (c.target() == null ? "" : "Bash".equals(c.tool())
+                .collect(Collectors.groupingBy(c -> c.tool() + "|" + (c.target() == null ? "" : SHELL.contains(c.tool())
                         ? signature(c.target()) : c.target()) + "|" + firstLine(c.errorText())));
         return by.values().stream().map(l -> {
             ToolCallRow last = l.stream().max(Comparator.comparing(ToolCallRow::startedAt)).orElseThrow();

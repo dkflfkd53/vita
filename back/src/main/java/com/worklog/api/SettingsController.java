@@ -49,6 +49,12 @@ public class SettingsController {
         return ResponseEntity.noContent().build();
     }
 
+    @PutMapping("/ai")
+    public ResponseEntity<Void> ai(@RequestBody Settings.AiConfig ai) {
+        settings.saveAi(ai);
+        return ResponseEntity.noContent().build();
+    }
+
     @PutMapping("/work-text")
     public ResponseEntity<Void> workText(@RequestBody WorkTextConfig config) {
         settings.saveWorkText(config);

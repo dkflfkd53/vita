@@ -69,7 +69,7 @@ public class SettingsService {
 
     public Settings.All all() {
         List<String> repos = jdbc.sql("SELECT DISTINCT name FROM repo ORDER BY name").query(String.class).list();
-        return new Settings.All(categories(), projects(), routines(), workText(), repos, knownFolders());
+        return new Settings.All(categories(), projects(), routines(), workText(), ai(), repos, knownFolders());
     }
 
     /** 본 저장소 루트와 그 위 두 단계(홈 아래만) — 경로 규칙 고를 때 후보 */
@@ -115,7 +115,17 @@ public class SettingsService {
                 .orElse(new WorkTextConfig(DEFAULT_FULL, List.of())));
     }
 
+    public Settings.AiConfig ai() {
+        return (Settings.AiConfig) cache.computeIfAbsent("ai", k -> read(k, new TypeReference<Settings.AiConfig>() { })
+                .orElse(new Settings.AiConfig("claude", null)));
+    }
+
     // ───────── 쓰기 ─────────
+
+    public void saveAi(Settings.AiConfig ai) {
+        String engine = "codex".equals(ai.engine()) ? "codex" : "claude";
+        write("ai", new Settings.AiConfig(engine, blankToNull(ai.codexModel())));
+    }
 
     /** 목록 순서가 곧 순서. oldName 이 있으면 이름 바꾸기(할 일의 카테고리도 같이). 쓰는 할 일이 있는 카테고리는 지울 수 없다 */
     @Transactional

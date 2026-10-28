@@ -18,7 +18,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  *   <li>user 의 "[Request interrupted by user" → 사용자 중단</li>
  * </ul>
  */
-final class AgentParser {
+public final class AgentParser {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int TARGET_MAX = 200;
@@ -28,16 +28,16 @@ final class AgentParser {
     private AgentParser() {
     }
 
-    sealed interface Item permits ToolStart, ToolEnd, Event {
+    public sealed interface Item permits ToolStart, ToolEnd, Event {
     }
 
-    record ToolStart(String id, String sessionId, Instant at, String tool, String target, boolean sidechain) implements Item {
+    public record ToolStart(String id, String sessionId, Instant at, String tool, String target, boolean sidechain) implements Item {
     }
 
-    record ToolEnd(String id, Instant at, String status, String errorText) implements Item {
+    public record ToolEnd(String id, Instant at, String status, String errorText) implements Item {
     }
 
-    record Event(String sessionId, Instant at, String kind, Long valueMs, String detail) implements Item {
+    public record Event(String sessionId, Instant at, String kind, Long valueMs, String detail) implements Item {
     }
 
     static List<Item> parse(String line, String fallbackSessionId) {
@@ -110,7 +110,7 @@ final class AgentParser {
     }
 
     /** 무엇에 대한 호출인지 한 줄 — Bash 는 명령 첫 줄, 파일 도구는 경로 */
-    static String target(String tool, JsonNode in) {
+    public static String target(String tool, JsonNode in) {
         String v = switch (tool) {
             case "Bash" -> in.path("command").asText(null);
             case "Read", "Write", "Edit", "NotebookEdit" -> in.path("file_path").asText(in.path("notebook_path").asText(null));

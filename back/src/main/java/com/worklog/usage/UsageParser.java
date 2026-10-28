@@ -9,7 +9,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /** assistant 줄의 message.usage 를 뽑는다. 합성 응답(<synthetic>)은 실제 호출이 아니라 버린다 */
-final class UsageParser {
+public final class UsageParser {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -52,7 +52,7 @@ final class UsageParser {
                 u.path("cache_read_input_tokens").asLong(0), w5m, w1h, n.path("isSidechain").asBoolean(false)));
     }
 
-    record UsageRow(String messageId, String sessionId, Instant at, String model, long input, long output,
+    public record UsageRow(String messageId, String sessionId, Instant at, String model, long input, long output,
                     long cacheRead, long cacheWrite5m, long cacheWrite1h, boolean sidechain) {
     }
 }

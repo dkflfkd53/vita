@@ -21,7 +21,9 @@ $javaVersion = (cmd /c 'java -version 2>&1' | Select-Object -First 1)
 if ($javaVersion -match 'version "(\d+)') { $major = [int]$Matches[1] } else { $major = 0 }
 if ($major -lt 21) { throw "Java 21 이상이 필요합니다 (지금: $javaVersion)" }
 $claude = (Get-Command claude -ErrorAction SilentlyContinue | Select-Object -First 1).Source
-if (-not $claude) { Write-Warning 'claude 를 찾지 못했습니다 — 수집·화면은 되지만 AI 요약·리포트는 Claude Code 설치·로그인 뒤에 동작합니다' }
+$codex = (Get-Command codex -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+if (-not $claude -and -not $codex) { Write-Warning 'claude·codex 를 둘 다 찾지 못했습니다 — 수집·화면은 되지만 AI 요약·리포트는 Claude Code 나 Codex 를 설치·로그인한 뒤에 동작합니다' }
+elseif (-not $claude) { Write-Host 'Claude Code 가 없어 Codex 로 AI 작성을 하려면 설정 → AI 작성에서 Codex 를 고르세요' }
 
 Write-Host '1/4 프론트 빌드'
 Push-Location front

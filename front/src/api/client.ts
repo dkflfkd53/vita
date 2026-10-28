@@ -9,6 +9,7 @@ import type {
   ProjectRule,
   RoutineRule,
   SettingCategory,
+  AiConfig,
   SettingsAll,
   WorkTextConfig,
   UsageBreakdown,
@@ -121,5 +122,6 @@ export const api = {
   saveCategories: (list: SettingCategory[]) => request<void>('/settings/categories', { method: 'PUT', body: JSON.stringify(list) }),
   saveProjects: (list: ProjectRule[]) => request<void>('/settings/projects', { method: 'PUT', body: JSON.stringify(list) }),
   saveRoutines: (list: RoutineRule[]) => request<void>('/settings/routines', { method: 'PUT', body: JSON.stringify(list) }),
+  saveAi: (ai: AiConfig) => request<void>('/settings/ai', { method: 'PUT', body: JSON.stringify(ai) }),
   saveWorkTextConfig: (config: WorkTextConfig) => request<void>('/settings/work-text', { method: 'PUT', body: JSON.stringify(config) }),
 }

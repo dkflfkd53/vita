@@ -2,11 +2,11 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '../api/hooks'
 import { api } from '../api/client'
-import type { ProjectRule, RoutineRule, SettingCategory, SettingsAll, WorkTextConfig, WorkTextPartDef } from '../api/types'
+import type { AiConfig, ProjectRule, RoutineRule, SettingCategory, SettingsAll, WorkTextConfig, WorkTextPartDef } from '../api/types'
 import { Icon } from '../components/Icon'
 import { ErrorBox, Loading } from '../components/common'
 
-// 설정 — 카테고리 / 저장소 → 카테고리 / 반복 업무 세션 / 주간보고 갈래. 섹션마다 따로 저장한다
+// 설정 — 카테고리 / 폴더 → 카테고리 / 반복 업무 세션 / 주간보고 갈래 / AI 작성. 섹션마다 따로 저장한다
 
 const COLORS = ['gray', 'blue', 'green', 'yellow', 'red', 'purple', 'orange', 'teal', 'pink']
 const COLOR_KO: Record<string, string> = {
@@ -39,6 +39,7 @@ export function SettingsPage() {
           <Projects data={data} />
           <Routines data={data} />
           <WorkTextParts data={data} />
+          <AiEngine data={data} />
         </>
       )}
     </div>
@@ -335,6 +336,31 @@ function WorkTextParts({ data }: { data: SettingsAll }) {
       <button className="btn btn-sm" onClick={addPart}>
         + 요약 갈래 추가
       </button>
+    </Section>
+  )
+}
+
+// ───────── AI 작성 ─────────
+
+function AiEngine({ data }: { data: SettingsAll }) {
+  const [ai, setAi, dirty] = useDraft<AiConfig>(data.ai)
+  return (
+    <Section
+      title="AI 작성"
+      hint="하루 요약·리포트·주간보고 글·개선 제안을 어느 도구로 쓸지. 이 컴퓨터에 로그인된 CLI 를 그대로 쓰고(내 구독), 세션은 저장하지 않아요. Claude Code·Codex 세션 수집은 이 설정과 상관없이 둘 다 돼요."
+      dirty={dirty}
+      onSave={() => api.saveAi(ai)}
+    >
+      <div className="st-chips">
+        <Chip on={ai.engine === 'claude'} onClick={() => setAi({ ...ai, engine: 'claude' })} label="Claude Code (claude -p)" />
+        <Chip on={ai.engine === 'codex'} onClick={() => setAi({ ...ai, engine: 'codex' })} label="Codex (codex exec)" />
+      </div>
+      {ai.engine === 'codex' && (
+        <label className="st-field">
+          Codex 모델 (비우면 Codex 기본 설정)
+          <input value={ai.codexModel ?? ''} placeholder="예: gpt-5.6" onChange={(e) => setAi({ ...ai, codexModel: e.target.value || null })} />
+        </label>
+      )}
     </Section>
   )
 }

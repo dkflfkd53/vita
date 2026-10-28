@@ -15,7 +15,7 @@ public final class Views {
     public record TaskSummary(String key, String title, List<String> projects, int sessionCount,
                               String firstAt, String lastAt, String lastDay, long activeSec, int activeDays,
                               int prompts, int edits, String status, boolean busy, String lastSummary,
-                              double costUsd) {
+                              double costUsd, List<String> tools) {
     }
 
     /** processes = 같은 작업 묶음을 연 프로세스 수(창·백그라운드 포함) */
@@ -59,7 +59,7 @@ public final class Views {
     }
 
     public record SessionInfo(String id, String title, String originalTitle, boolean renamed, String cwd,
-                              String project, String gitBranch, String firstAt, String lastAt, boolean hidden) {
+                              String project, String gitBranch, String firstAt, String lastAt, boolean hidden, String tool) {
     }
 
     public record TaskDay(String day, long activeSec, int prompts, int edits, List<String> summaries,

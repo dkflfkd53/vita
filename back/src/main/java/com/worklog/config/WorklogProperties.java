@@ -26,7 +26,9 @@ public record WorklogProperties(
         Map<String, ModelPrice> pricing,
         Backup backup,
         Map<String, String> projects,
-        List<RoutineSession> routineSessions
+        List<RoutineSession> routineSessions,
+        /** Codex CLI 데이터 폴더(~/.codex) — sessions/ 아래 세션을 같이 모은다 */
+        Path codexHome
 ) {
 
     /** 반복 업무 세션 — 원래 제목(title)이 같으면 label 로 보이고 계획 외 작업에서 빠진다. color = 캘린더 색 이름 */
