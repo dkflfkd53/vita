@@ -2,6 +2,7 @@ package com.worklog.query;
 
 import java.util.List;
 
+import com.worklog.usage.Pricing;
 import com.worklog.usage.UsageService.ModelUsage;
 import com.worklog.usage.UsageTotal;
 
@@ -79,6 +80,25 @@ public final class Views {
 
     /** 기간 사용량 — 합계와 모델별(토큰 종류별 양 + 환산 단가) */
     public record UsageBreakdown(String from, String to, UsageTotal total, List<ModelUsage> models) {
+    }
+
+    /**
+     * AI 사용 화면 위 — 기간 사용량을 모델·토큰 종류·날짜로. previous = 바로 앞 같은 길이 기간의 합계(비교용).
+     * scope = 카테고리(비우면 전체). tool = 그 모델을 쓴 도구(claude | codex)
+     */
+    public record UsageOverview(String from, String to, String scope, UsageTotal total, String previousFrom, String previousTo,
+                                UsageTotal previous, List<ModelShare> models, List<UsageDay> days) {
+    }
+
+    public record ModelShare(String model, String tool, boolean priced, UsageTotal usage, Pricing.Rate rate,
+                             int sessions) {
+    }
+
+    /** 하루 모델별 — 금액·토큰 합계만 */
+    public record UsageDay(String day, List<ModelDayValue> models) {
+    }
+
+    public record ModelDayValue(String model, double costUsd, long tokens) {
     }
 
     public record PeriodStats(String from, String to, long activeSec, int activeDays, int taskCount, int commits,

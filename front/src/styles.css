@@ -337,6 +337,7 @@ details > summary::-webkit-details-marker { display: none; }
 .crumb a:hover { color: var(--text); }
 .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
 .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.stat-row.five { grid-template-columns: repeat(5, 1fr); }
 .stat { background: var(--bg); border: 1px solid var(--border-muted); border-radius: var(--radius-lg); padding: 14px 16px; }
 .stat b { display: block; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 .stat span { font-size: 12px; color: var(--text-muted); }
@@ -403,7 +404,7 @@ details > summary::-webkit-details-marker { display: none; }
   .app { grid-template-columns: minmax(0, 1fr); }
   .sidebar { display: none; }
   .page { padding: 20px 16px 48px; }
-  .stat-row { grid-template-columns: repeat(2, 1fr); }
+  .stat-row, .stat-row.five { grid-template-columns: repeat(2, 1fr); }
   .list-row { grid-template-columns: 16px minmax(0, 1fr) 70px; }
   .list-row .col.hide-sm { display: none; }
   input.search { width: 100%; }
@@ -892,7 +893,7 @@ details > summary::-webkit-details-marker { display: none; }
 /* ───────── 에이전트 옵저버 ───────── */
 .ob { display: flex; flex-direction: column; gap: 16px; }
 .ob-note { padding: 10px 14px; border: 1px dashed var(--border); border-radius: var(--radius); color: var(--text-muted); font-size: 13px; background: var(--bg-inset); }
-.ob-card { padding: 14px 16px 16px; min-width: 0; }
+.ob-card { padding: 14px 16px 16px; min-width: 0; overflow-x: auto; }
 .ob-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
 .ob-head h3 { margin: 0; font-size: 13.5px; font-weight: 650; }
 .ob-head .subtle { font-size: 12px; }
@@ -1114,3 +1115,69 @@ a.tg-title:hover { color: var(--accent); }
 
 /* Codex 세션 표시 */
 .tool-badge { font-size: 11px; font-weight: 600; color: var(--text-muted); border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; line-height: 17px; }
+
+/* ───────── AI 사용 › 토큰 사용량 ───────── */
+.uo { padding: 18px 20px 20px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 18px; }
+.uo-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.uo-head h3 { margin: 0; font-size: 15px; font-weight: 650; }
+.uo-head p { margin: 3px 0 0; font-size: 12px; }
+.uo-empty { margin: 0; font-size: 13px; }
+.uo-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--border-muted); border-radius: var(--radius-lg); overflow: hidden; }
+.uo-kpi { padding: 12px 16px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.uo-kpi + .uo-kpi { border-left: 1px solid var(--border-muted); }
+.uo-kpi > span { font-size: 12px; color: var(--text-muted); }
+.uo-kpi b { font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }
+.uo-kpi small { font-size: 11.5px; color: var(--text-subtle); }
+.uo-kpi em { font-style: normal; font-weight: 600; color: var(--text-muted); }
+.uo-kpi em.up { color: var(--c-red); }
+.uo-kpi em.down { color: var(--c-green); }
+.uo-block { display: flex; flex-direction: column; gap: 8px; }
+.uo-label { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
+.uo-label b { font-weight: 650; }
+.uo-label .subtle { font-size: 12px; }
+.uo-stack { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.uo-stack-bar { display: flex; height: 14px; border-radius: 4px; overflow: hidden; background: var(--bg-inset); }
+.uo-stack.compact .uo-stack-bar { height: 10px; }
+.uo-stack-bar span { min-width: 2px; }
+.uo-stack-bar span + span { box-shadow: inset 1px 0 0 var(--bg); }
+.uo-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-muted); }
+.uo-legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.uo-legend b { color: var(--text); font-weight: 600; }
+.uo-legend small { color: var(--text-subtle); }
+.uo-legend i, .uo-parts i, .uo-model-head i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; flex: none; }
+.uo-share { display: grid; grid-template-columns: 44px 1fr; gap: 8px 10px; align-items: start; }
+.uo-share-l { font-size: 12px; color: var(--text-muted); line-height: 10px; }
+.uo-models { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 12px; }
+.uo-model { border: 1px solid var(--border-muted); border-radius: var(--radius-lg); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.uo-model-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.uo-model-head b { font-size: 13.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uo-model-head .tool-badge { margin-left: auto; }
+.uo-model-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.uo-model-nums div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.uo-model-nums span { font-size: 11.5px; color: var(--text-subtle); }
+.uo-model-nums b { font-size: 17px; font-weight: 700; }
+.uo-model-nums small { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uo-parts { width: 100%; border-collapse: collapse; font-size: 12px; }
+.uo-parts td { padding: 3px 0; border-top: 1px solid var(--border-muted); white-space: nowrap; }
+.uo-parts td:first-child { color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+.uo-parts td.num { text-align: right; padding-left: 8px; }
+.uo-days { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; height: 150px; }
+.uo-days.month { gap: 3px; }
+.uo-day { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; }
+.uo-day-v { font-size: 11px; color: var(--text-muted); text-align: center; height: 14px; white-space: nowrap; overflow: hidden; }
+.uo-day-bar { flex: 1; display: flex; flex-direction: column-reverse; background: var(--bg-inset); border-radius: 4px; overflow: hidden; }
+.uo-day-bar span { width: 100%; flex: none; }
+.uo-day-l { font-size: 11px; color: var(--text-subtle); text-align: center; }
+.uo-day.today .uo-day-l { color: var(--accent); font-weight: 650; }
+.uo-details summary { cursor: pointer; font-size: 12.5px; color: var(--text-muted); }
+.uo-details[open] summary { margin-bottom: 10px; }
+@media (max-width: 820px) {
+  .uo-kpis { grid-template-columns: 1fr 1fr; }
+  .uo-kpi:nth-child(3) { border-left: 0; }
+  .uo-kpi:nth-child(n + 3) { border-top: 1px solid var(--border-muted); }
+  .uo-days.month .uo-day-l { font-size: 9px; }
+  .uo { padding: 14px 14px 16px; }
+  .cal-toolbar { flex-wrap: wrap; gap: 8px; }
+  .cal-toolbar h2 { min-width: 0 !important; }
+}
+.segmented.sm button { padding: 2px 9px; font-size: 12px; }

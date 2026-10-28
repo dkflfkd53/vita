@@ -180,7 +180,7 @@ function ReportBody({ report }: { report: ReportView }) {
 
   return (
     <>
-      <div className="stat-row" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+      <div className="stat-row five">
         <div className="stat">
           <b>{fmtShort(s.activeSec)}</b>
           <span>작업 시간</span>

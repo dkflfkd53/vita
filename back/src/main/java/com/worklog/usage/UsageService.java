@@ -3,8 +3,10 @@ package com.worklog.usage;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Predicate;
 
@@ -93,6 +95,28 @@ public class UsageService {
             perRow.forEach((r, t) -> {
                 if (session.test(r.sessionId())) {
                     m.merge(r.day(), t, UsageTotal::plus);
+                }
+            });
+            return m;
+        }
+
+        /** 날짜 → 모델 → 합계(조건에 맞는 세션만) */
+        public Map<String, Map<String, UsageTotal>> byDayModel(Predicate<String> session) {
+            Map<String, Map<String, UsageTotal>> m = new TreeMap<>();
+            perRow.forEach((r, t) -> {
+                if (session.test(r.sessionId())) {
+                    m.computeIfAbsent(r.day(), k -> new HashMap<>()).merge(r.model(), t, UsageTotal::plus);
+                }
+            });
+            return m;
+        }
+
+        /** 모델 → 그 모델을 쓴 세션 id 들(조건에 맞는 세션만) */
+        public Map<String, Set<String>> sessionsOfModel(Predicate<String> session) {
+            Map<String, Set<String>> m = new HashMap<>();
+            perRow.keySet().forEach(r -> {
+                if (session.test(r.sessionId())) {
+                    m.computeIfAbsent(r.model(), k -> new HashSet<>()).add(r.sessionId());
                 }
             });
             return m;

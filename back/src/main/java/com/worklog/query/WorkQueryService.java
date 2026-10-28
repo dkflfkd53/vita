@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -14,6 +15,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -323,6 +325,45 @@ public class WorkQueryService {
         UsageService.Index u = usage.index(from, to);
         return new UsageBreakdown(from.toString(), to.toString(), u.total(index.taskOfSession()::containsKey),
                 u.byModel(index.taskOfSession()::containsKey));
+    }
+
+    /** 기간 사용량을 모델·토큰 종류·날짜로(보이는 세션, scope = 카테고리 — 비우면 전체) + 바로 앞 같은 길이 기간 합계 */
+    public Views.UsageOverview usageOverview(LocalDate from, LocalDate to, String scopeLabel) {
+        Index index = catalog.build();
+        Map<String, SessionRow> sessions = new HashMap<>();
+        index.tasks().values().forEach(t -> t.sessions().forEach(s -> sessions.put(s.id(), s)));
+        String sc = scopeLabel == null || scopeLabel.isBlank() ? null : scopeLabel;
+        Predicate<String> in = id -> {
+            SessionRow s = sessions.get(id);
+            return s != null && index.taskOfSession().containsKey(id) && (sc == null || sc.equals(scope.label(s.cwd(), s.project())));
+        };
+        UsageService.Index u = usage.index(from, to);
+        // 한 달 전체면 지난달, 아니면 바로 앞 같은 길이
+        boolean wholeMonth = from.getDayOfMonth() == 1 && to.equals(YearMonth.from(from).atEndOfMonth());
+        LocalDate pFrom = wholeMonth ? from.minusMonths(1) : from.minusDays(ChronoUnit.DAYS.between(from, to) + 1);
+        LocalDate pTo = from.minusDays(1);
+        UsageTotal previous = usage.index(pFrom, pTo).total(in);
+
+        Map<String, Set<String>> sessionsOf = u.sessionsOfModel(in);
+        List<Views.ModelShare> models = u.byModel(in).stream().map(m -> {
+            Set<String> ids = sessionsOf.getOrDefault(m.model(), Set.of());
+            long codex = ids.stream().filter(id -> "codex".equals(sessions.get(id).tool())).count();
+            return new Views.ModelShare(m.model(), codex * 2 > ids.size() ? "codex" : "claude", m.priced(), m.usage(), m.rate(), ids.size());
+        }).toList();
+
+        Map<String, Map<String, UsageTotal>> byDay = u.byDayModel(in);
+        List<Views.UsageDay> days = new ArrayList<>();
+        for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
+            Map<String, UsageTotal> m = byDay.getOrDefault(d.toString(), Map.of());
+            days.add(new Views.UsageDay(d.toString(), models.stream().filter(ms -> m.containsKey(ms.model()))
+                    .map(ms -> {
+                        UsageTotal t = m.get(ms.model());
+                        return new Views.ModelDayValue(ms.model(), t.costUsd(),
+                                t.input() + t.output() + t.cacheRead() + t.cacheWrite5m() + t.cacheWrite1h());
+                    }).toList()));
+        }
+        return new Views.UsageOverview(from.toString(), to.toString(), sc, u.total(in), pFrom.toString(), pTo.toString(), previous,
+                models, days);
     }
 
     /** from~to 의 보이는 세션×날짜. 업무 보드·분류가 쓴다 */

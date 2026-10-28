@@ -13,6 +13,7 @@ import type {
   SettingsAll,
   WorkTextConfig,
   UsageBreakdown,
+  UsageOverview,
   InsightPatch,
   InsightTarget,
   Observer,
@@ -76,6 +77,8 @@ export const api = {
   collect: () => request<{ ran: boolean; lastCollectedAt: string }>('/collect', { method: 'POST' }),
   catchUp: () => request<JobView>('/summaries/catch-up', { method: 'POST' }),
   jobs: () => request<JobView[]>('/jobs'),
+  usageOverview: (from: string, to: string, scope: string | null) =>
+    request<UsageOverview>(`/usage/overview?from=${from}&to=${to}${scope ? `&scope=${encodeURIComponent(scope)}` : ''}`),
   backups: () => request<BackupFile[]>('/backups'),
   backupNow: () => request<{ local: string; mirrored: string | null; size: number }>('/backups', { method: 'POST' }),
 

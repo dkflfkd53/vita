@@ -8,7 +8,7 @@ import { ErrorBox, Loading } from './common'
 
 // 사용량(API 환산 $)이 어디서 나왔는지 — 모델별로 토큰 종류마다 양 × 단가 = 금액
 
-const PARTS: { key: keyof ModelRate; label: string; tip: string; tokens: (u: UsageTotal) => number }[] = [
+export const PARTS: { key: keyof ModelRate; label: string; tip: string; tokens: (u: UsageTotal) => number }[] = [
   { key: 'input', label: '입력', tip: '캐시를 거치지 않은 입력 토큰', tokens: (u) => u.input },
   { key: 'output', label: '출력', tip: 'Claude 가 쓴 토큰(생각·답변·도구 호출)', tokens: (u) => u.output },
   { key: 'cacheRead', label: '캐시 읽기', tip: '캐시에서 다시 읽은 입력 — 대화가 길수록 매 턴 커진다', tokens: (u) => u.cacheRead },

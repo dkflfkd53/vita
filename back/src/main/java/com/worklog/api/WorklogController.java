@@ -29,6 +29,7 @@ import com.worklog.query.Views.Overview;
 import com.worklog.query.Views.PeriodStats;
 import com.worklog.query.Views.SessionInfo;
 import com.worklog.query.Views.TaskDetail;
+import com.worklog.query.Views.UsageOverview;
 import com.worklog.query.WorkQueryService;
 import com.worklog.report.ExportService;
 import com.worklog.report.Period;
@@ -78,6 +79,13 @@ public class WorklogController {
     @GetMapping("/usage")
     public UsageBreakdown usage(@RequestParam LocalDate from, @RequestParam LocalDate to) {
         return query.usage(from, to);
+    }
+
+    /** AI 사용 화면 위 — 모델·토큰 종류·날짜별 사용량. scope = 카테고리(비우면 전체) */
+    @GetMapping("/usage/overview")
+    public UsageOverview usageOverview(@RequestParam LocalDate from, @RequestParam LocalDate to,
+                                                              @RequestParam(required = false) String scope) {
+        return query.usageOverview(from, to, scope);
     }
 
     @GetMapping("/heatmap")

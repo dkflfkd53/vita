@@ -6,6 +6,7 @@ import { api } from '../api/client'
 import type { Insight, InsightPatch, InsightTarget, MetricDef, Observer, ObsBreakdown } from '../api/types'
 import { Icon } from '../components/Icon'
 import { ErrorBox, Loading, ProjectLabel } from '../components/common'
+import { UsageOverviewSection } from '../components/UsageOverview'
 import { fmtDateTime, fmtDuration, fmtShort, fmtUsd, parseYmd, weekKey } from '../lib/format'
 
 // 에이전트 옵저버 — Claude 세션이 시간·토큰을 어디에 쓰는지(지표·병목) 보고,
@@ -55,6 +56,7 @@ export function ObserverPage() {
         <ProposeButton week={week} scope={scope} />
       </div>
 
+      <UsageOverviewSection week={week} scope={scope} />
       {error && <ErrorBox error={error} />}
       {isLoading && <Loading />}
       {data && (
@@ -77,10 +79,7 @@ export function ObserverPage() {
           </div>
           <div className="ob-two">
             <CostlySessions observer={data} />
-            <div className="ob-stack">
-              <Models observer={data} />
-              <Rework observer={data} />
-            </div>
+            <Rework observer={data} />
           </div>
           <InsightSection week={week} defs={data.metricDefs} insights={insights.data} loading={insights.isLoading} />
         </div>
@@ -92,7 +91,7 @@ export function ObserverPage() {
       <div className="page-head">
         <div>
           <h1>AI 사용</h1>
-          <p>Claude Code·Codex 세션이 시간과 토큰을 어디에 쓰는지 보고, 규칙을 바꾼 뒤 실제로 나아졌는지 기록해요.</p>
+          <p>Claude Code·Codex 세션이 크레딧·토큰을 모델별로 얼마나 썼는지, 시간이 어디서 새는지 보고, 규칙을 바꾼 뒤 실제로 나아졌는지 기록해요.</p>
         </div>
         {scopeSwitch}
       </div>
@@ -398,28 +397,6 @@ function CostlySessions({ observer }: { observer: Observer }) {
           ))}
         </tbody>
       </table>
-    </section>
-  )
-}
-
-function Models({ observer }: { observer: Observer }) {
-  return (
-    <section className="card ob-card">
-      <div className="ob-head">
-        <h3>모델별 비용</h3>
-      </div>
-      {observer.models.length === 0 && <p className="subtle ob-empty">없음</p>}
-      {observer.models.map((m) => (
-        <div key={m.model} className="ob-bar-row">
-          <span className="ob-cmd">{m.model.replace(/^claude-/, '')}</span>
-          <span className="ob-bar">
-            <span style={{ width: `${m.share}%` }} />
-          </span>
-          <span className="num ob-val">
-            {fmtUsd(m.costUsd)} · {Math.round(m.share)}%
-          </span>
-        </div>
-      ))}
     </section>
   )
 }

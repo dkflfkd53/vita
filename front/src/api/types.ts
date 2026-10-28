@@ -225,6 +225,19 @@ export interface ModelUsage {
   rate: ModelRate | null
 }
 
+/** AI 사용 화면 위 — 모델·토큰 종류·날짜별. previous = 바로 앞 기간(한 달 전체면 지난달) */
+export interface UsageOverview {
+  from: string
+  to: string
+  scope: string | null
+  total: UsageTotal
+  previousFrom: string
+  previousTo: string
+  previous: UsageTotal
+  models: (ModelUsage & { tool: 'claude' | 'codex'; sessions: number })[]
+  days: { day: string; models: { model: string; costUsd: number; tokens: number }[] }[]
+}
+
 export interface UsageBreakdown {
   from: string
   to: string

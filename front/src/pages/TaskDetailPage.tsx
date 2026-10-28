@@ -39,7 +39,7 @@ export function TaskDetailPage() {
         </div>
       </div>
 
-      <div className="stat-row" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+      <div className="stat-row five">
         <div className="stat">
           <b>{fmtShort(t.activeSec)}</b>
           <span>작업 시간</span>
