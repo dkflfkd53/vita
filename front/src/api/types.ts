@@ -237,11 +237,17 @@ export type ReportKind = 'week' | 'month'
 export interface ReportView {
   kind: ReportKind
   key: string
+  /** 리포트 양식 id — 기본 리포트는 'default' */
+  template: string
+  /** 양식 이름 (기본은 '주간 리포트'·'월간 리포트') */
+  title: string
   label: string
   from: string
   to: string
   content: string | null
   generatedAt: string | null
+  /** 직접 고쳐 저장한 내용 */
+  edited: boolean
   stats: PeriodStats
 }
 
@@ -583,6 +589,17 @@ export interface WorkTextConfig {
   parts: WorkTextPartDef[]
 }
 
+/** 리포트 양식 — 리포트 화면의 버튼 하나. format 틀대로 AI 가 채운다 */
+export interface ReportTemplate {
+  id: string
+  title: string
+  kind: ReportKind
+  format: string
+  guide: string | null
+  /** 이 카테고리 내용만 (비우면 전부) */
+  categories: string[]
+}
+
 /** AI 작성 도구 — claude(claude -p) | codex(codex exec) */
 export interface AiConfig {
   engine: 'claude' | 'codex'
@@ -594,6 +611,7 @@ export interface SettingsAll {
   projects: ProjectRule[]
   routines: RoutineRule[]
   workText: WorkTextConfig
+  reportTemplates: ReportTemplate[]
   ai: AiConfig
   knownRepos: string[]
   /** 규칙으로 고를 만한 폴더(본 저장소 루트와 그 상위, ~ 로 줄임) */

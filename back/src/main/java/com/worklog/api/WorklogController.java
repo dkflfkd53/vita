@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -120,27 +121,45 @@ public class WorklogController {
         return query.stats(from, to);
     }
 
+    /** template = 설정의 리포트 양식 id. 비우면 기본 리포트 */
     @GetMapping("/reports/{kind}/{key}")
-    public ReportView report(@PathVariable String kind, @PathVariable String key) {
+    public ReportView report(@PathVariable String kind, @PathVariable String key, @RequestParam(required = false) String template) {
         Period period = Period.of(kind, key);
-        ReportRow row = reports.get(period).orElse(null);
-        return new ReportView(kind, key, period.label(), period.from().toString(), period.to().toString(),
-                row == null ? null : row.content(), row == null ? null : row.generatedAt(),
+        ReportRow row = reports.get(period, template).orElse(null);
+        return new ReportView(kind, key, blankToDefault(template), reports.title(period, template), period.label(),
+                period.from().toString(), period.to().toString(), row == null ? null : row.content(),
+                row == null ? null : row.generatedAt(), row != null && "manual".equals(row.model()),
                 query.stats(period.from(), period.to()));
     }
 
-    public record ReportView(String kind, String key, String label, String from, String to, String content,
-                             String generatedAt, PeriodStats stats) {
+    /** edited = 직접 고쳐 저장한 내용 */
+    public record ReportView(String kind, String key, String template, String title, String label, String from, String to,
+                             String content, String generatedAt, boolean edited, PeriodStats stats) {
     }
 
     @PostMapping("/reports/{kind}/{key}")
-    public JobView generateReport(@PathVariable String kind, @PathVariable String key) {
-        return reports.submit(Period.of(kind, key)).view();
+    public JobView generateReport(@PathVariable String kind, @PathVariable String key, @RequestParam(required = false) String template) {
+        return reports.submit(Period.of(kind, key), template).view();
+    }
+
+    @PutMapping("/reports/{kind}/{key}")
+    public ResponseEntity<Void> saveReport(@PathVariable String kind, @PathVariable String key,
+                                           @RequestParam(required = false) String template, @RequestBody ReportEdit body) {
+        reports.save(Period.of(kind, key), template, body.content());
+        return ResponseEntity.noContent().build();
+    }
+
+    public record ReportEdit(String content) {
     }
 
     @PostMapping("/reports/{kind}/{key}/export")
-    public Map<String, String> exportReport(@PathVariable String kind, @PathVariable String key) throws IOException {
-        return Map.of("path", exports.export(Period.of(kind, key)).toString());
+    public Map<String, String> exportReport(@PathVariable String kind, @PathVariable String key,
+                                            @RequestParam(required = false) String template) throws IOException {
+        return Map.of("path", exports.export(Period.of(kind, key), template).toString());
+    }
+
+    private static String blankToDefault(String template) {
+        return template == null || template.isBlank() ? "default" : template;
     }
 
     @PostMapping("/collect")

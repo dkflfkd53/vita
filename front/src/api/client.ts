@@ -19,6 +19,7 @@ import type {
   JobView,
   Overview,
   ReportKind,
+  ReportTemplate,
   ReportView,
   SessionInfo,
   TaskDetail,
@@ -61,11 +62,17 @@ export const api = {
   hiddenSessions: () => request<SessionInfo[]>('/sessions/hidden'),
   updateSession: (id: string, patch: { title?: string; hidden?: boolean }) =>
     request<void>(`/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
-  report: (kind: ReportKind, key: string) => request<ReportView>(`/reports/${kind}/${key}`),
-  generateReport: (kind: ReportKind, key: string) =>
-    request<JobView>(`/reports/${kind}/${key}`, { method: 'POST' }),
-  exportReport: (kind: ReportKind, key: string) =>
-    request<{ path: string }>(`/reports/${kind}/${key}/export`, { method: 'POST' }),
+  report: (kind: ReportKind, key: string, template = 'default') =>
+    request<ReportView>(`/reports/${kind}/${key}?template=${encodeURIComponent(template)}`),
+  generateReport: (kind: ReportKind, key: string, template = 'default') =>
+    request<JobView>(`/reports/${kind}/${key}?template=${encodeURIComponent(template)}`, { method: 'POST' }),
+  saveReport: (kind: ReportKind, key: string, template: string, content: string) =>
+    request<void>(`/reports/${kind}/${key}?template=${encodeURIComponent(template)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content }),
+    }),
+  exportReport: (kind: ReportKind, key: string, template = 'default') =>
+    request<{ path: string }>(`/reports/${kind}/${key}/export?template=${encodeURIComponent(template)}`, { method: 'POST' }),
   collect: () => request<{ ran: boolean; lastCollectedAt: string }>('/collect', { method: 'POST' }),
   catchUp: () => request<JobView>('/summaries/catch-up', { method: 'POST' }),
   jobs: () => request<JobView[]>('/jobs'),
@@ -123,5 +130,7 @@ export const api = {
   saveProjects: (list: ProjectRule[]) => request<void>('/settings/projects', { method: 'PUT', body: JSON.stringify(list) }),
   saveRoutines: (list: RoutineRule[]) => request<void>('/settings/routines', { method: 'PUT', body: JSON.stringify(list) }),
   saveAi: (ai: AiConfig) => request<void>('/settings/ai', { method: 'PUT', body: JSON.stringify(ai) }),
+  saveReportTemplates: (list: ReportTemplate[]) =>
+    request<void>('/settings/report-templates', { method: 'PUT', body: JSON.stringify(list) }),
   saveWorkTextConfig: (config: WorkTextConfig) => request<void>('/settings/work-text', { method: 'PUT', body: JSON.stringify(config) }),
 }

@@ -12,13 +12,14 @@ import org.springframework.web.bind.annotation.RestController;
 import com.worklog.config.Settings;
 import com.worklog.config.Settings.Category;
 import com.worklog.config.Settings.ProjectRule;
+import com.worklog.config.Settings.ReportTemplate;
 import com.worklog.config.Settings.RoutineRule;
 import com.worklog.config.Settings.WorkTextConfig;
 import com.worklog.config.SettingsService;
 
 import lombok.RequiredArgsConstructor;
 
-/** 화면의 설정 — 카테고리, 저장소 → 카테고리, 반복 업무 세션, 주간보고 갈래 */
+/** 화면의 설정 — 카테고리, 저장소 → 카테고리, 반복 업무 세션, 주간보고 갈래, 리포트 양식 */
 @RestController
 @RequestMapping("/api/settings")
 @RequiredArgsConstructor
@@ -58,6 +59,12 @@ public class SettingsController {
     @PutMapping("/work-text")
     public ResponseEntity<Void> workText(@RequestBody WorkTextConfig config) {
         settings.saveWorkText(config);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/report-templates")
+    public ResponseEntity<Void> reportTemplates(@RequestBody List<ReportTemplate> list) {
+        settings.saveReportTemplates(list);
         return ResponseEntity.noContent().build();
     }
 }

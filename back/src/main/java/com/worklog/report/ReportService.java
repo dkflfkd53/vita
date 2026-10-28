@@ -10,6 +10,8 @@ import java.util.Optional;
 import org.springframework.stereotype.Service;
 
 import com.worklog.collect.CollectScheduler;
+import com.worklog.config.Settings.ReportTemplate;
+import com.worklog.config.SettingsService;
 import com.worklog.config.WorklogProperties;
 import com.worklog.query.QueryStore;
 import com.worklog.query.Rows.ReportRow;
@@ -37,6 +39,8 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * 주간·월간 리포트. 기간 안의 하루 요약을 먼저 채운 뒤, 하루 요약 + 통계 + 커밋을 묶어 claude 로 한 번 정리한다.
  * 하루 요약이 아직 없는 오늘은 요청 원문 일부를 대신 넣는다.
+ * 양식(template)은 기본 리포트(null) 또는 설정의 리포트 양식 id. 같은 입력을 그 양식 틀대로 채우고, 양식·기간마다 따로 저장한다
+ * (report.kind = 기본은 week·month, 양식은 "report-{id}").
  */
 @Slf4j
 @Service
@@ -54,14 +58,50 @@ public class ReportService {
     private final CollectScheduler collector;
     private final WorkService workService;
     private final ClassifyService classify;
+    private final SettingsService settings;
 
-    public Optional<ReportRow> get(Period period) {
-        return store.report(period.kind(), period.key());
+    public Optional<ReportRow> get(Period period, String templateId) {
+        return store.report(storeKind(period, template(period, templateId)), period.key());
     }
 
-    public JobService.Job submit(Period period) {
-        return jobs.submit("report:" + period.kind() + ":" + period.key(),
-                period.kindLabel() + " 리포트 " + period.label(), progress -> {
+    /** 직접 고친 내용. 비우면 지운다(다시 AI 로 쓰기 전 빈 상태) */
+    public void save(Period period, String templateId, String content) {
+        String kind = storeKind(period, template(period, templateId));
+        if (content == null || content.isBlank()) {
+            store.deleteReport(kind, period.key());
+            return;
+        }
+        store.saveReport(kind, period.key(), content.stripTrailing(), "manual");
+    }
+
+    /** 양식 이름 — 기본 리포트면 "주간 리포트"·"월간 리포트" */
+    public String title(Period period, String templateId) {
+        ReportTemplate t = template(period, templateId);
+        return t == null ? period.kindLabel() + " 리포트" : t.title();
+    }
+
+    /** null·"default" = 기본 리포트. 없는 양식이거나 기간 종류가 다르면 오류 */
+    private ReportTemplate template(Period period, String templateId) {
+        if (templateId == null || templateId.isBlank() || "default".equals(templateId)) {
+            return null;
+        }
+        ReportTemplate t = settings.reportTemplate(templateId)
+                .orElseThrow(() -> new IllegalArgumentException("없는 리포트 양식: " + templateId));
+        if (!t.kind().equals(period.kind())) {
+            throw new IllegalArgumentException("'" + t.title() + "' 은 " + ("month".equals(t.kind()) ? "월간" : "주간") + " 양식입니다");
+        }
+        return t;
+    }
+
+    private static String storeKind(Period period, ReportTemplate t) {
+        return t == null ? period.kind() : "report-" + t.id();
+    }
+
+    public JobService.Job submit(Period period, String templateId) {
+        ReportTemplate template = template(period, templateId);
+        String what = template == null ? period.kindLabel() + " 리포트" : template.title();
+        return jobs.submit("report:" + period.kind() + ":" + period.key() + (template == null ? "" : ":" + template.id()),
+                what + " " + period.label(), progress -> {
                     collector.collectAndWait();
                     List<LocalDate> missing = summaries.missingDays(period.from(), period.to());
                     for (int i = 0; i < missing.size(); i++) {
@@ -82,14 +122,48 @@ public class ReportService {
                             log.warn("{} 업무 분류 실패, 분류 없이 진행: {}", week, e.getMessage());
                         }
                     }
-                    progress.update("리포트 작성 중");
+                    progress.update(what + " 작성 중");
                     PeriodWork work = workService.periodWork(period.from(), period.to());
-                    boolean byWork = work.items().stream().anyMatch(ItemView::planned);
                     String input = input(period, work);
-                    String content = claude.ask(prompt(period, input, byWork)).strip();
-                    store.saveReport(period.kind(), period.key(), content, claude.model());
-                    return period.kindLabel() + " 리포트 완료";
+                    String prompt = template == null ? prompt(period, input, work.items().stream().anyMatch(ItemView::planned))
+                            : templatePrompt(period, template, input);
+                    String content = claude.ask(prompt).strip();
+                    store.saveReport(storeKind(period, template), period.key(), content, claude.model());
+                    return what + " 완료";
                 });
+    }
+
+    /** 사용자 양식 — 틀은 그대로 두고 빈칸만 입력 근거로 채운다 */
+    static String templatePrompt(Period period, ReportTemplate t, String input) {
+        StringBuilder rules = new StringBuilder();
+        if (!t.categories().isEmpty()) {
+            rules.append("- 범위: 카테고리 ").append(String.join(", ", t.categories()))
+                    .append(" 에 속한 업무·작업·커밋만 다룬다. 입력의 [카테고리]·[프로젝트]·[저장소] 표기로 판단하고, 다른 카테고리 내용은 쓰지 않는다.\n");
+        }
+        if (t.guide() != null) {
+            rules.append("- 작성 지침(사용자): ").append(t.guide().strip().replace("\n", "\n  ")).append('\n');
+        }
+        return """
+                너는 개발자의 %s 업무 보고서 "%s" 를 쓰는 담당이다. 기간: %s ~ %s (%s).
+                아래 입력(통계, 계획 업무와 연결된 작업, 날짜별 하루 요약, git 커밋)만 근거로 쓴다.
+
+                %s
+                - 작업 시간은 AI 에이전트 세션 활동 시간 기준 추정치다. 숫자는 입력 통계를 그대로 쓴다.
+                %s
+                양식 쓰는 법:
+                - 아래 양식의 제목·순서·머리표·들여쓰기·고정 문구는 그대로 둔다. <…>·[…]·빈칸·예시 문장 자리만 입력 내용으로 바꿔 채운다.
+                - 양식에 반복 항목(예: 업무마다 한 덩어리)이 있으면 입력에 있는 만큼 늘리거나 줄인다.
+                - 입력에 근거가 없는 칸은 지어내지 말고 "해당 없음" 으로 둔다.
+                - 결과는 채운 양식만. 앞뒤 설명·코드 블록 감싸기 없이.
+
+                ===== 양식 시작 =====
+                %s
+                ===== 양식 끝 =====
+
+                ---
+                %s
+                """.formatted(period.kindLabel(), t.title(), period.from(), period.to(), period.label(), SummaryService.RULES,
+                rules, t.format(), input);
     }
 
     private String prompt(Period period, String input, boolean byWork) {
@@ -112,7 +186,7 @@ public class ReportService {
                 아래 입력(통계, 계획 업무와 연결된 작업, 날짜별 하루 요약, git 커밋)만 근거로 쓴다.
 
                 %s
-                - 작업 시간은 Claude Code 세션 활동 시간 기준 추정치다. 숫자는 입력 통계를 그대로 쓴다.
+                - 작업 시간은 AI 에이전트 세션 활동 시간 기준 추정치다. 숫자는 입력 통계를 그대로 쓴다.
 
                 출력 형식(마크다운, 맨 위 # 제목 없이 ## 부터 시작):
                 ## 한눈에 보기

@@ -48,7 +48,10 @@ Windows 에서 새로 설치했으면 PATH 가 새 터미널에서만 잡히므�
    `PUT /api/settings/projects` 본문 = `[{"repo":"~/work/acme","category":"프로젝트 A"},{"repo":"my-app","category":"기타"}]`.
    `repo` 에 경로를 적으면 그 아래 전부(가장 가까운 규칙이 이김), 이름만 적으면 그 저장소. **비워 두면 모두 관리**하고, 하나라도 적으면 걸린 것만 관리한다.
 4. (선택) **반복 업무 세션** — 배포처럼 늘 돌리는 세션이 있으면: `PUT /api/settings/routines` 본문 = `[{"title":"원래 세션 제목","label":"표시 이름","color":"teal"}]`.
-5. (선택) **주간보고 갈래** — 사내 주간보고 양식이 있으면 화면 `/settings` 의 "주간보고 갈래"에서 지시·문체 예시를 적도록 안내한다(직접 고친 글이 다음 주 AI 작성의 예시가 됨).
+5. (선택) **리포트 양식** — 회사 월간·주간 보고 양식이 있으면 받아서 넣는다. 리포트 화면에 그 제목의 버튼이 생기고 세션 기록으로 틀을 채운다.
+   `PUT /api/settings/report-templates` 본문 = `[{"id":"monthly","title":"월간보고","kind":"month","format":"## 이번 달 성과\n- <성과>","guide":null,"categories":[]}]`.
+   `kind` = week·month, `format` = 마크다운 틀(`<…>` 자리를 AI 가 채움), `categories` 비우면 전부. id 는 영문 소문자·숫자·-.
+   (선택) **주간보고 갈래** — 사내 주간보고 양식이 있으면 화면 `/settings` 의 "주간보고 갈래"에서 지시·문체 예시를 적도록 안내한다(직접 고친 글이 다음 주 AI 작성의 예시가 됨).
 6. **AI 작성 도구** — 요약·리포트를 쓸 CLI. 기본은 Claude Code(`claude -p`). Claude Code 가 없고 Codex 만 있으면(또는 사용자가 원하면)
    `PUT /api/settings/ai` 본문 = `{"engine":"codex","codexModel":null}`. 세션 수집은 이 설정과 상관없이 Claude Code·Codex 둘 다 된다.
 

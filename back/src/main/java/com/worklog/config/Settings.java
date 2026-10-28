@@ -35,12 +35,19 @@ public final class Settings {
     public record WorkTextConfig(WorkTextPart full, List<WorkTextPart> parts) {
     }
 
+    /**
+     * 리포트 양식 — 리포트 화면의 주간(week)·월간(month) 버튼 하나. 같은 기록(통계·업무·하루 요약·커밋)을 format 틀대로 AI 가 채운다.
+     * guide = 추가 작성 지침, categories = 이 카테고리 내용만(비우면 전부)
+     */
+    public record ReportTemplate(String id, String title, String kind, String format, String guide, List<String> categories) {
+    }
+
     /** AI 작성(요약·리포트·주간보고·개선 제안)에 쓸 도구. engine = claude(claude -p) | codex(codex exec), codexModel 비우면 Codex 기본 */
     public record AiConfig(String engine, String codexModel) {
     }
 
     /** knownRepos = 본 저장소 이름, knownFolders = 규칙으로 고를 만한 폴더(본 저장소 루트와 그 상위, ~ 로 줄임) */
     public record All(List<Category> categories, List<ProjectRule> projects, List<RoutineRule> routines,
-                      WorkTextConfig workText, AiConfig ai, List<String> knownRepos, List<String> knownFolders) {
+                      WorkTextConfig workText, List<ReportTemplate> reportTemplates, AiConfig ai, List<String> knownRepos, List<String> knownFolders) {
     }
 }

@@ -20,8 +20,8 @@ export const useTask = (key: string) => useQuery({ queryKey: ['task', key], quer
 
 export const useHiddenSessions = () => useQuery({ queryKey: ['hidden'], queryFn: () => api.hiddenSessions() })
 
-export const useReport = (kind: ReportKind, key: string) =>
-  useQuery({ queryKey: ['report', kind, key], queryFn: () => api.report(kind, key) })
+export const useReport = (kind: ReportKind, key: string, template = 'default') =>
+  useQuery({ queryKey: ['report', kind, key, template], queryFn: () => api.report(kind, key, template) })
 
 /**
  * 작업 큐 폴링. 진행 중인 작업이 있으면 2초, 없으면 15초 간격.

@@ -21,6 +21,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.worklog.config.Settings.Category;
 import com.worklog.config.Settings.ProjectRule;
+import com.worklog.config.Settings.ReportTemplate;
 import com.worklog.config.Settings.RoutineRule;
 import com.worklog.config.Settings.WorkTextConfig;
 import com.worklog.config.Settings.WorkTextPart;
@@ -28,7 +29,7 @@ import com.worklog.config.Settings.WorkTextPart;
 import lombok.RequiredArgsConstructor;
 
 /**
- * 사용자 설정(setting 표, JSON) — 저장소→카테고리, 반복 업무 세션, 주간보고 갈래. 카테고리는 category 표.
+ * 사용자 설정(setting 표, JSON) — 저장소→카테고리, 반복 업무 세션, 주간보고 갈래, 리포트 양식. 카테고리는 category 표.
  * 처음 읽을 때 application.yml 의 예전 값(worklog.projects·routine-sessions)이 있으면 그것으로 채운다.
  * 읽기가 잦아 메모리에 들고 있고, 바꿀 때만 다시 읽는다.
  */
@@ -69,7 +70,7 @@ public class SettingsService {
 
     public Settings.All all() {
         List<String> repos = jdbc.sql("SELECT DISTINCT name FROM repo ORDER BY name").query(String.class).list();
-        return new Settings.All(categories(), projects(), routines(), workText(), ai(), repos, knownFolders());
+        return new Settings.All(categories(), projects(), routines(), workText(), reportTemplates(), ai(), repos, knownFolders());
     }
 
     /** 본 저장소 루트와 그 위 두 단계(홈 아래만) — 경로 규칙 고를 때 후보 */
@@ -113,6 +114,16 @@ public class SettingsService {
         return (WorkTextConfig) cache.computeIfAbsent("work-text", k -> read(k, new TypeReference<WorkTextConfig>() { })
                 .map(c -> new WorkTextConfig(c.full() == null ? DEFAULT_FULL : c.full(), c.parts() == null ? List.of() : c.parts()))
                 .orElse(new WorkTextConfig(DEFAULT_FULL, List.of())));
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<ReportTemplate> reportTemplates() {
+        return (List<ReportTemplate>) cache.computeIfAbsent("report-templates",
+                k -> read(k, new TypeReference<List<ReportTemplate>>() { }).orElse(List.of()));
+    }
+
+    public Optional<ReportTemplate> reportTemplate(String id) {
+        return reportTemplates().stream().filter(t -> t.id().equals(id)).findFirst();
     }
 
     public Settings.AiConfig ai() {
@@ -218,6 +229,28 @@ public class SettingsService {
                     blankToNull(p.guide()), blankToNull(p.example())));
         }
         write("work-text", new WorkTextConfig(full, parts));
+    }
+
+    /** 목록 순서가 곧 리포트 화면 버튼 순서 */
+    public void saveReportTemplates(List<ReportTemplate> list) {
+        Set<String> ids = new HashSet<>();
+        List<ReportTemplate> clean = new ArrayList<>();
+        for (ReportTemplate t : list) {
+            String id = t.id() == null ? "" : t.id().strip();
+            if (!PART_ID.matcher(id).matches() || "default".equals(id) || !ids.add(id)) {
+                throw new IllegalArgumentException("양식 id 는 영문 소문자·숫자·- 로, 겹치지 않게: " + id);
+            }
+            if (t.title() == null || t.title().isBlank()) {
+                throw new IllegalArgumentException("양식 제목을 적으세요");
+            }
+            if (t.format() == null || t.format().isBlank()) {
+                throw new IllegalArgumentException("'" + t.title().strip() + "' 양식 틀이 비었습니다");
+            }
+            String kind = "month".equals(t.kind()) ? "month" : "week";
+            clean.add(new ReportTemplate(id, t.title().strip(), kind, t.format().stripTrailing(), blankToNull(t.guide()),
+                    nonNull(t.categories())));
+        }
+        write("report-templates", clean);
     }
 
     // ───────── 내부 ─────────

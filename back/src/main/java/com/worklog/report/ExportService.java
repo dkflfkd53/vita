@@ -37,16 +37,18 @@ public class ExportService {
     private final ReportService reports;
     private final WorkQueryService query;
 
-    public Path export(Period period) throws IOException {
-        ReportRow report = reports.get(period)
+    public Path export(Period period, String templateId) throws IOException {
+        ReportRow report = reports.get(period, templateId)
                 .orElseThrow(() -> new IllegalStateException("먼저 리포트를 생성하세요"));
         PeriodStats stats = query.stats(period.from(), period.to());
-        Path file = props.exportsDir().resolve("worklog-" + period.kind() + "-" + period.key() + ".html");
-        Files.writeString(file, render(period, report, stats), StandardCharsets.UTF_8);
+        boolean custom = templateId != null && !templateId.isBlank() && !"default".equals(templateId);
+        Files.createDirectories(props.exportsDir());
+        Path file = props.exportsDir().resolve("worklog-" + period.kind() + "-" + period.key() + (custom ? "-" + templateId : "") + ".html");
+        Files.writeString(file, render(period, reports.title(period, templateId), report, stats), StandardCharsets.UTF_8);
         return file;
     }
 
-    String render(Period period, ReportRow report, PeriodStats stats) {
+    String render(Period period, String title, ReportRow report, PeriodStats stats) {
         String body = RENDERER.render(PARSER.parse(report.content()));
         long maxProject = stats.projects().stream().mapToLong(ProjectStat::activeSec).max().orElse(1);
         StringBuilder projects = new StringBuilder();
@@ -71,7 +73,7 @@ public class ExportService {
                     """.formatted(d.day(), ReportService.hours(d.activeSec()), d.commits(), pct, date.getDayOfMonth()));
         }
         return TEMPLATE
-                .replace("{{kind}}", period.kindLabel())
+                .replace("{{title}}", esc(title))
                 .replace("{{period}}", esc(period.label()))
                 .replace("{{range}}", period.from() + " ~ " + period.to())
                 .replace("{{hours}}", ReportService.hours(stats.activeSec()))
@@ -94,7 +96,7 @@ public class ExportService {
             <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>{{kind}} 업무 리포트</title>
+            <title>{{title}}</title>
             <style>
             :root {
               --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de; --text: #1f2328; --muted: #59636e;
@@ -151,7 +153,7 @@ public class ExportService {
             </head>
             <body>
             <main>
-              <div class="eyebrow">{{kind}} 업무 리포트</div>
+              <div class="eyebrow">{{title}}</div>
               <h1>{{period}}</h1>
               <p class="range">{{range}}</p>
               <div class="stats">
@@ -163,7 +165,7 @@ public class ExportService {
               <section class="panel"><h2>프로젝트별 작업 시간</h2>{{projects}}</section>
               <section class="panel"><h2>날짜별 작업 시간</h2><div class="days">{{days}}</div></section>
               <article>{{body}}</article>
-              <footer>Vita · 작업 시간은 Claude Code 세션 활동 기준 추정치 · {{generatedAt}} 생성</footer>
+              <footer>Vita · 작업 시간은 AI 에이전트 세션 활동 기준 추정치 · {{generatedAt}} 생성</footer>
             </main>
             </body>
             </html>

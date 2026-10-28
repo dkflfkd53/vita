@@ -1050,6 +1050,17 @@ button.mo-card.usage-btn { border: 0; }
 .uc-resp { display: block !important; color: var(--text-subtle); }
 
 .report-tools { display: flex; align-items: flex-start; gap: 8px; }
+.tpl-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -2px 0 14px; }
+.tpl-chip { border: 1px solid var(--border); background: var(--bg); color: var(--text-muted); border-radius: 999px; padding: 3px 12px; font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; }
+.tpl-chip:hover { color: var(--text); border-color: var(--border-strong); }
+.tpl-chip.on { border-color: var(--accent); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent); font-weight: 600; }
+.tpl-add { font-size: 12.5px; color: var(--text-subtle); padding: 3px 6px; }
+.tpl-add:hover { color: var(--text); }
+.report-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -6px 0 6px; font-size: 12px; }
+.report-edit { display: flex; flex-direction: column; gap: 10px; }
+.report-edit textarea { width: 100%; min-height: 480px; resize: vertical; border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; background: var(--bg); color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.6; }
+.report-edit .actions { justify-content: flex-end; }
 
 /* 세션 목록 — 할 일별 묶음 */
 .tg { border-bottom: 1px solid var(--border-muted); }

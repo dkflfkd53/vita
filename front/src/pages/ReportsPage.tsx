@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { useLastJob, useReport, useRunningJob, useStartJob } from '../api/hooks'
+import { useLastJob, useReport, useRunningJob, useSettings, useStartJob } from '../api/hooks'
 import { api } from '../api/client'
 import type { ReportKind, ReportView } from '../api/types'
 import { Icon } from '../components/Icon'
@@ -12,15 +12,24 @@ import { totalTokens, UsageButton, UsageCompact } from '../components/UsageBreak
 import { WorkTextDialog } from '../components/WorkTextDialog'
 import { addDays, fmtDateTime, fmtDuration, fmtShort, fmtTokens, fmtUsd, monthKey, parseYmd, projectColor, today, weekKey, weekday } from '../lib/format'
 
-/** 리포트 — 주간·월간 AI 업무 보고서. 주간이면 '주간보고 글' 버튼으로 사내 주간보고 글(전체 + 설정의 요약 갈래) 창을 띄운다 */
+/**
+ * 리포트 — 주간·월간 AI 업무 보고서. 기본 리포트 + 설정의 리포트 양식(그 기간 종류만)을 버튼으로 골라 쓴다.
+ * 주간이면 '주간보고 글' 버튼으로 사내 주간보고 글(전체 + 설정의 요약 갈래) 창을 띄운다
+ */
 export function ReportsPage() {
   const [params, setParams] = useSearchParams()
   const kind = (params.get('kind') as ReportKind) ?? 'week'
   const key = params.get('key') ?? (kind === 'week' ? weekKey(new Date()) : today().slice(0, 7))
-  const { data, isLoading, error } = useReport(kind, key)
+  const settings = useSettings()
+  const templates = (settings.data?.reportTemplates ?? []).filter((t) => t.kind === kind)
+  const wanted = params.get('t') ?? 'default'
+  // 설정에서 지웠거나 다른 기간 종류의 양식이면 기본으로
+  const template = wanted === 'default' || templates.some((t) => t.id === wanted) || !settings.data ? wanted : 'default'
+  const { data, isLoading, error } = useReport(kind, key, template)
   const [textOpen, setTextOpen] = useState(false)
 
-  const go = (k: ReportKind, periodKey: string) => setParams({ kind: k, key: periodKey }, { replace: true })
+  const go = (k: ReportKind, periodKey: string, t = k === kind ? template : 'default') =>
+    setParams(t === 'default' ? { kind: k, key: periodKey } : { kind: k, key: periodKey, t }, { replace: true })
   const shift = (n: number) => {
     if (!data) return
     if (kind === 'week') go(kind, weekKey(addDays(parseYmd(data.from), n * 7)))
@@ -36,7 +45,7 @@ export function ReportsPage() {
       <div className="page-head">
         <div>
           <h1>리포트</h1>
-          <p>하루 요약을 모아 주간·월간 업무 보고서로 정리해요. 사내 주간보고 글은 ‘주간보고 글’ 버튼으로 열어요.</p>
+          <p>세션 기록을 모아 주간·월간 업무 보고서로 정리해요. 설정의 리포트 양식을 고르면 그 틀대로 써요.</p>
         </div>
         <div className="segmented">
           <button className={kind === 'week' ? 'on' : ''} onClick={() => go('week', weekKey(new Date()))}>
@@ -67,6 +76,19 @@ export function ReportsPage() {
           {data && <ReportActions report={data} />}
         </div>
       </div>
+      <div className="tpl-row" role="tablist" aria-label="리포트 양식">
+        <button role="tab" aria-selected={template === 'default'} className={`tpl-chip${template === 'default' ? ' on' : ''}`} onClick={() => go(kind, key, 'default')}>
+          기본 리포트
+        </button>
+        {templates.map((t) => (
+          <button key={t.id} role="tab" aria-selected={template === t.id} className={`tpl-chip${template === t.id ? ' on' : ''}`} onClick={() => go(kind, key, t.id)}>
+            {t.title}
+          </button>
+        ))}
+        <Link to="/settings#report-templates" className="tpl-add" title="설정 › 리포트 양식에서 제목과 틀을 정하면 여기 버튼이 생겨요">
+          + 양식
+        </Link>
+      </div>
       {textOpen && kind === 'week' && <WorkTextDialog week={key} onClose={() => setTextOpen(false)} />}
 
       {error && <ErrorBox error={error} />}
@@ -76,14 +98,17 @@ export function ReportsPage() {
   )
 }
 
+function jobKeyOf(report: ReportView) {
+  return `report:${report.kind}:${report.key}${report.template === 'default' ? '' : `:${report.template}`}`
+}
+
 function ReportActions({ report }: { report: ReportView }) {
-  const jobKey = `report:${report.kind}:${report.key}`
-  const running = useRunningJob(jobKey)
-  const start = useStartJob(({ kind, key }: { kind: ReportKind; key: string }) => api.generateReport(kind, key))
+  const running = useRunningJob(jobKeyOf(report))
+  const start = useStartJob((r: ReportView) => api.generateReport(r.kind, r.key, r.template))
   const [copied, setCopied] = useState(false)
   const [exported, setExported] = useState<string | null>(null)
   const exportHtml = useMutation({
-    mutationFn: () => api.exportReport(report.kind, report.key),
+    mutationFn: () => api.exportReport(report.kind, report.key, report.template),
     onSuccess: (r) => setExported(r.path),
   })
 
@@ -109,14 +134,19 @@ function ReportActions({ report }: { report: ReportView }) {
         )}
         <button
           className="btn btn-primary"
-          onClick={() => start.mutate({ kind: report.kind, key: report.key })}
+          onClick={() => {
+            if (report.edited && !confirm('직접 고친 내용을 AI 가 새로 쓴 글로 바꿀까요?')) return
+            start.mutate(report)
+          }}
           disabled={!!running || start.isPending}
+          title={`${report.title} — ${report.label}`}
         >
           {running ? <div className="spinner" style={{ borderColor: 'rgba(255,255,255,.35)', borderTopColor: '#fff' }} /> : <Icon name="sparkle" size={14} />}
           {running ? '작성 중' : report.content ? '다시 작성' : 'AI 리포트 작성'}
         </button>
       </div>
       {running?.message && <span className="subtle" style={{ fontSize: 12 }}>{running.message}</span>}
+      {start.isError && <span className="bad" style={{ fontSize: 12 }}>{(start.error as Error).message}</span>}
       {exported && (
         <div className="callout" style={{ maxWidth: 560 }}>
           <Icon name="terminal" size={16} />
@@ -134,7 +164,16 @@ function ReportActions({ report }: { report: ReportView }) {
 function ReportBody({ report }: { report: ReportView }) {
   const s = report.stats
   const navigate = useNavigate()
-  const last = useLastJob(`report:${report.kind}:${report.key}`)
+  const last = useLastJob(jobKeyOf(report))
+  const qc = useQueryClient()
+  const [editing, setEditing] = useState<string | null>(null)
+  const save = useMutation({
+    mutationFn: (content: string) => api.saveReport(report.kind, report.key, report.template, content),
+    onSuccess: () => {
+      setEditing(null)
+      qc.invalidateQueries({ queryKey: ['report'] })
+    },
+  })
   const maxProject = Math.max(1, ...s.projects.map((p) => p.activeSec))
   const maxDay = Math.max(1, ...s.days.map((d) => d.activeSec))
   const todayKey = today()
@@ -174,24 +213,47 @@ function ReportBody({ report }: { report: ReportView }) {
                 리포트 작성 실패: {last.message}
               </div>
             )}
-            {report.content ? (
+            {editing !== null ? (
+              <div className="report-edit">
+                <textarea value={editing} onChange={(e) => setEditing(e.target.value)} spellCheck={false} autoFocus />
+                <div className="actions">
+                  {save.isError && <span className="bad">{(save.error as Error).message}</span>}
+                  <button className="btn btn-sm" onClick={() => setEditing(null)}>
+                    취소
+                  </button>
+                  <button className="btn btn-primary btn-sm" onClick={() => save.mutate(editing)} disabled={save.isPending}>
+                    {save.isPending ? '저장 중' : '저장'}
+                  </button>
+                </div>
+              </div>
+            ) : report.content ? (
               <>
+                <div className="report-title">
+                  <span className="subtle">{report.title}</span>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditing(report.content ?? '')}>
+                    직접 고치기
+                  </button>
+                </div>
                 <div className="prose">
                   <Markdown remarkPlugins={[remarkGfm]}>{report.content}</Markdown>
                 </div>
                 <p className="subtle" style={{ fontSize: 12, marginTop: 28 }}>
-                  {fmtDateTime(report.generatedAt)} 작성 · 작업 시간은 세션 활동 기준 추정치예요
+                  {fmtDateTime(report.generatedAt)} {report.edited ? '직접 고침' : '작성'} · 작업 시간은 세션 활동 기준 추정치예요
                 </p>
               </>
             ) : (
               <div className="empty">
                 <Icon name="sparkle" size={26} className="ai" />
-                <h3>아직 작성된 리포트가 없어요</h3>
+                <h3>{report.title} — 아직 작성 전이에요</h3>
                 <p>
-                  오른쪽 위 <b>AI 리포트 작성</b>을 누르면 이 기간의 하루 요약을 먼저 채운 뒤 보고서를 써요.
+                  오른쪽 위 <b>AI 리포트 작성</b>을 누르면 이 기간의 하루 요약을 먼저 채운 뒤
+                  {report.template === 'default' ? ' 보고서를 써요.' : ' 이 양식대로 채워요.'}
                   <br />
                   날짜 수에 따라 1~3분쯤 걸려요.
                 </p>
+                <button className="btn btn-ghost btn-sm" onClick={() => setEditing('')}>
+                  직접 쓰기
+                </button>
               </div>
             )}
           </div>

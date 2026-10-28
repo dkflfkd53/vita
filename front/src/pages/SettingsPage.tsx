@@ -2,11 +2,11 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '../api/hooks'
 import { api } from '../api/client'
-import type { AiConfig, ProjectRule, RoutineRule, SettingCategory, SettingsAll, WorkTextConfig, WorkTextPartDef } from '../api/types'
+import type { AiConfig, ProjectRule, ReportTemplate, RoutineRule, SettingCategory, SettingsAll, WorkTextConfig, WorkTextPartDef } from '../api/types'
 import { Icon } from '../components/Icon'
 import { ErrorBox, Loading } from '../components/common'
 
-// 설정 — 카테고리 / 폴더 → 카테고리 / 반복 업무 세션 / 주간보고 갈래 / AI 작성. 섹션마다 따로 저장한다
+// 설정 — 카테고리 / 폴더 → 카테고리 / 반복 업무 세션 / 리포트 양식 / 주간보고 갈래 / AI 작성. 섹션마다 따로 저장한다
 
 const COLORS = ['gray', 'blue', 'green', 'yellow', 'red', 'purple', 'orange', 'teal', 'pink']
 const COLOR_KO: Record<string, string> = {
@@ -23,12 +23,17 @@ const COLOR_KO: Record<string, string> = {
 
 export function SettingsPage() {
   const { data, isLoading, error } = useSettings()
+  const loaded = !!data
+  // 리포트 화면의 '+ 양식' 처럼 #섹션 으로 들어오면 그 섹션으로
+  useEffect(() => {
+    if (loaded && location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: 'start' })
+  }, [loaded])
   return (
     <div className="page settings-page">
       <div className="page-head">
         <div>
           <h1>설정</h1>
-          <p>카테고리, 저장소 연결, 반복 업무 세션, 주간보고 갈래를 내 방식대로 바꿔요. 섹션마다 따로 저장돼요.</p>
+          <p>카테고리, 저장소 연결, 반복 업무 세션, 리포트 양식, 주간보고 갈래를 내 방식대로 바꿔요. 섹션마다 따로 저장돼요.</p>
         </div>
       </div>
       {error && <ErrorBox error={error} />}
@@ -38,6 +43,7 @@ export function SettingsPage() {
           <Categories data={data} />
           <Projects data={data} />
           <Routines data={data} />
+          <ReportTemplates data={data} />
           <WorkTextParts data={data} />
           <AiEngine data={data} />
         </>
@@ -48,12 +54,14 @@ export function SettingsPage() {
 
 /** 섹션 틀 + 저장 버튼. 저장하면 화면 데이터 전부 다시 읽는다 */
 function Section({
+  id,
   title,
   hint,
   dirty,
   onSave,
   children,
 }: {
+  id?: string
   title: string
   hint: string
   dirty: boolean
@@ -63,7 +71,7 @@ function Section({
   const qc = useQueryClient()
   const save = useMutation({ mutationFn: onSave, onSuccess: () => qc.invalidateQueries() })
   return (
-    <section className="card st-section">
+    <section className="card st-section" id={id}>
       <div className="st-head">
         <div>
           <h2>{title}</h2>
@@ -223,6 +231,99 @@ function Routines({ data }: { data: SettingsAll }) {
       ))}
       <button className="btn btn-sm" onClick={() => setList([...list, { title: '', label: '', color: 'teal' }])}>
         + 반복 업무 추가
+      </button>
+    </Section>
+  )
+}
+
+// ───────── 리포트 양식 ─────────
+
+const SAMPLE_FORMAT = `## 이번 기간 핵심 성과
+- <성과 1>
+- <성과 2>
+
+## 업무별 진행
+### [<카테고리>] <업무명>
+- 진행 내용:
+- 결과·수치:
+
+## 이슈·리스크
+- <막힌 점, 없으면 해당 없음>
+
+## 다음 계획
+- <이어서 할 일>`
+
+function ReportTemplates({ data }: { data: SettingsAll }) {
+  const [list, setList, dirty] = useDraft<ReportTemplate[]>(data.reportTemplates)
+  const set = (i: number, patch: Partial<ReportTemplate>) => setList(list.map((t, k) => (k === i ? { ...t, ...patch } : t)))
+  const move = (i: number, d: number) => {
+    const j = i + d
+    if (j < 0 || j >= list.length) return
+    const next = [...list]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    setList(next)
+  }
+  const add = () => {
+    let n = list.length + 1
+    while (list.some((t) => t.id === `tpl-${n}`)) n++
+    setList([...list, { id: `tpl-${n}`, title: '', kind: 'month', format: SAMPLE_FORMAT, guide: null, categories: [] }])
+  }
+  return (
+    <Section
+      id="report-templates"
+      title="리포트 양식"
+      hint="제목과 틀을 정하면 리포트 화면(주간 또는 월간)에 버튼이 생기고, 같은 세션 기록(통계·할 일·하루 요약·커밋)을 이 틀대로 AI 가 채워요. <…> 자리는 내용으로 바뀌고, 제목·순서·고정 문구는 그대로 둬요. '기본 리포트'는 늘 있어요."
+      dirty={dirty}
+      onSave={() => api.saveReportTemplates(list)}
+    >
+      {list.length === 0 && <p className="subtle st-empty">아직 없음 — 기본 리포트만 써요.</p>}
+      {list.map((t, i) => (
+        <div key={t.id} className="st-part">
+          <div className="st-part-head">
+            <input className="st-input" value={t.title} onChange={(e) => set(i, { title: e.target.value })} placeholder="양식 제목 (예: 월간보고)" />
+            <div className="segmented">
+              <button className={t.kind === 'week' ? 'on' : ''} onClick={() => set(i, { kind: 'week' })}>
+                주간
+              </button>
+              <button className={t.kind === 'month' ? 'on' : ''} onClick={() => set(i, { kind: 'month' })}>
+                월간
+              </button>
+            </div>
+            <button className="btn btn-ghost btn-sm icon-btn" onClick={() => move(i, -1)} disabled={i === 0} aria-label="위로">
+              ↑
+            </button>
+            <button className="btn btn-ghost btn-sm icon-btn" onClick={() => move(i, 1)} disabled={i === list.length - 1} aria-label="아래로">
+              ↓
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setList(list.filter((_, k) => k !== i))}>
+              삭제
+            </button>
+          </div>
+          <label className="st-field">
+            양식 (마크다운 틀 — 회사 양식을 그대로 붙여넣어도 돼요)
+            <textarea rows={12} className="mono" value={t.format} onChange={(e) => set(i, { format: e.target.value })} />
+          </label>
+          <label className="st-field">
+            작성 지침 (선택)
+            <textarea
+              rows={3}
+              value={t.guide ?? ''}
+              placeholder="예: 업무마다 2줄 이내, 수치는 괄호로, 존댓말 없이 '~함' 체"
+              onChange={(e) => set(i, { guide: e.target.value || null })}
+            />
+          </label>
+          <div className="st-field">
+            범위 — 카테고리 (비우면 전부)
+            <div className="st-chips">
+              {data.categories.map((c) => (
+                <Chip key={c.name} on={t.categories.includes(c.name)} onClick={() => set(i, { categories: toggle(t.categories, c.name) })} label={c.name} />
+              ))}
+            </div>
+          </div>
+        </div>
+      ))}
+      <button className="btn btn-sm" onClick={add}>
+        + 양식 추가
       </button>
     </Section>
   )
