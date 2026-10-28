@@ -5,7 +5,9 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -30,6 +32,7 @@ public class ClaudeCli {
 
     private static final long TIMEOUT_MINUTES = 6;
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    static final boolean WINDOWS = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("windows");
 
     private final WorklogProperties props;
 
@@ -38,14 +41,18 @@ public class ClaudeCli {
     }
 
     public String ask(String prompt, String model) throws IOException {
-        List<String> command = List.of(resolveBin(), "-p",
+        List<String> command = new ArrayList<>(launcher(resolveBin()));
+        command.addAll(List.of("-p",
                 "--model", model,
                 "--no-session-persistence",
                 "--output-format", "json",
-                "--tools", "");
+                "--tools", ""));
         ProcessBuilder pb = new ProcessBuilder(command).directory(props.dataDir().toFile());
         Map<String, String> env = pb.environment();
-        env.put("PATH", env.getOrDefault("PATH", "") + ":/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin");
+        if (!WINDOWS) {
+            // launchd 로 뜨면 PATH 가 거의 비어 있다
+            env.put("PATH", env.getOrDefault("PATH", "") + ":/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin");
+        }
         Process p = pb.start();
         CompletableFuture<byte[]> stdout = CompletableFuture.supplyAsync(() -> readAll(p, false));
         CompletableFuture<byte[]> stderr = CompletableFuture.supplyAsync(() -> readAll(p, true));
@@ -82,13 +89,30 @@ public class ClaudeCli {
         if (Files.isExecutable(Path.of(props.claudeBin()))) {
             return props.claudeBin();
         }
-        // nvm 버전이 바뀌어 경로가 달라졌을 때 — 로그인 셸 PATH 로 다시 찾는다
-        Process p = new ProcessBuilder("/bin/zsh", "-lc", "command -v claude").start();
-        String found = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
+        // 경로가 바뀌었거나 이름만 적혀 있을 때 — Windows 는 where, 그 밖은 로그인 셸 PATH 로 다시 찾는다
+        ProcessBuilder pb = WINDOWS ? new ProcessBuilder("cmd.exe", "/c", "where", "claude")
+                : new ProcessBuilder("/bin/zsh", "-lc", "command -v claude");
+        Process p = pb.start();
+        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
+        String found = out.lines().map(String::strip).filter(l -> !l.isEmpty())
+                // where 는 확장자 없는 sh 스크립트도 같이 내놓는다 — 실행할 수 있는 .exe/.cmd 를 먼저
+                .sorted((a, b) -> Boolean.compare(!isWinExecutable(a), !isWinExecutable(b)))
+                .findFirst().orElse("");
         if (found.isEmpty()) {
-            throw new IOException("claude 실행 파일을 찾지 못함 — worklog.claude-bin 을 설정하세요");
+            throw new IOException("claude 실행 파일을 찾지 못함 — Claude Code 를 설치하거나 worklog.claude-bin 을 설정하세요");
         }
         return found;
+    }
+
+    private static boolean isWinExecutable(String path) {
+        String l = path.toLowerCase(Locale.ROOT);
+        return !WINDOWS || l.endsWith(".exe") || l.endsWith(".cmd") || l.endsWith(".bat");
+    }
+
+    /** Windows 의 npm 설치판(claude.cmd)은 cmd 로 띄워야 한다 */
+    static List<String> launcher(String bin) {
+        String l = bin.toLowerCase(Locale.ROOT);
+        return WINDOWS && (l.endsWith(".cmd") || l.endsWith(".bat")) ? List.of("cmd.exe", "/c", bin) : List.of(bin);
     }
 
     private static byte[] readAll(Process p, boolean err) {

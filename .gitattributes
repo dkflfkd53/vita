@@ -1,0 +1,5 @@
+# Windows 스크립트는 CRLF, 셸 스크립트는 LF 로 체크아웃
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.sh text eol=lf
+back/gradlew text eol=lf

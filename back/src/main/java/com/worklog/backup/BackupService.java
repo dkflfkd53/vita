@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -37,8 +38,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 하루 한 번 DB 스냅샷. 돌고 있는 DB 를 VACUUM INTO 로 일관되게 떠서 gzip 으로 맥 안에 두고,
- * openssl(AES-256-CBC, PBKDF2 20만 회)로 암호화한 사본을 iCloud Drive 에 둔다 — 앱 없이도 restore.sh 로 되살린다.
+ * 하루 한 번 DB 스냅샷. 돌고 있는 DB 를 VACUUM INTO 로 일관되게 떠서 gzip 으로 이 컴퓨터에 두고,
+ * macOS 면 openssl(AES-256-CBC, PBKDF2 20만 회)로 암호화한 사본을 iCloud Drive 에 하나 더 둔다(암호는 키체인).
+ * 앱 없이도 restore.sh / restore.ps1 로 되살린다. Windows 는 암호화 사본 없이 로컬 백업만.
  * 보관: 최근 일간 N개 + 주별 마지막 것 N개 + 월별 마지막 것 N개.
  */
 @Slf4j
@@ -47,6 +49,7 @@ import lombok.extern.slf4j.Slf4j;
 public class BackupService {
 
     static final String OPENSSL = "/usr/bin/openssl";
+    private static final boolean MAC = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("mac");
     private static final Pattern NAME = Pattern.compile("worklog-(\\d{4}-\\d{2}-\\d{2})\\.db\\.gz(\\.enc)?");
     private static final String ACCOUNT = "worklog";
 
@@ -100,7 +103,8 @@ public class BackupService {
             prune(b.localDir(), false);
 
             Path mirrored = null;
-            if (b.mirrorDir() != null && !b.mirrorDir().toString().isBlank()) {
+            // 암호화 사본은 macOS 에서만(키체인·openssl). 다른 OS 는 로컬 백업만
+            if (MAC && Files.isExecutable(Path.of(OPENSSL)) && b.mirrorDir() != null && !b.mirrorDir().toString().isBlank()) {
                 mirrored = mirror(gz, day, b);
                 prune(b.mirrorDir(), true);
             }
