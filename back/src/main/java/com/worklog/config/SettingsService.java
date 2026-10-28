@@ -1,5 +1,6 @@
 package com.worklog.config;
 
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -8,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
@@ -67,7 +69,20 @@ public class SettingsService {
 
     public Settings.All all() {
         List<String> repos = jdbc.sql("SELECT DISTINCT name FROM repo ORDER BY name").query(String.class).list();
-        return new Settings.All(categories(), projects(), routines(), workText(), repos);
+        return new Settings.All(categories(), projects(), routines(), workText(), repos, knownFolders());
+    }
+
+    /** 본 저장소 루트와 그 위 두 단계(홈 아래만) — 경로 규칙 고를 때 후보 */
+    private List<String> knownFolders() {
+        String home = System.getProperty("user.home");
+        TreeSet<String> out = new TreeSet<>();
+        for (String root : jdbc.sql("SELECT root FROM repo").query(String.class).list()) {
+            Path p = Path.of(root);
+            for (int up = 0; up < 3 && p != null && p.startsWith(home) && !p.equals(Path.of(home)); up++, p = p.getParent()) {
+                out.add("~" + p.toString().substring(home.length()).replace('\\', '/'));
+            }
+        }
+        return List.copyOf(out);
     }
 
     public List<Category> categories() {

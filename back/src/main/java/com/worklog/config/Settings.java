@@ -12,7 +12,10 @@ public final class Settings {
     public record Category(String name, String color, String oldName) {
     }
 
-    /** 이 git 저장소(폴더 이름)에서 만든 세션·커밋을 이 카테고리로 본다 */
+    /**
+     * 이 폴더(또는 저장소) 아래에서 만든 세션·커밋을 이 카테고리로 본다.
+     * repo = 폴더 경로(~/work/회사A — 그 아래 전부, 가장 가까운 규칙이 이김) 또는 저장소 폴더 이름(my-app)
+     */
     public record ProjectRule(String repo, String category) {
     }
 
@@ -32,7 +35,8 @@ public final class Settings {
     public record WorkTextConfig(WorkTextPart full, List<WorkTextPart> parts) {
     }
 
+    /** knownRepos = 본 저장소 이름, knownFolders = 규칙으로 고를 만한 폴더(본 저장소 루트와 그 상위, ~ 로 줄임) */
     public record All(List<Category> categories, List<ProjectRule> projects, List<RoutineRule> routines,
-                      WorkTextConfig workText, List<String> knownRepos) {
+                      WorkTextConfig workText, List<String> knownRepos, List<String> knownFolders) {
     }
 }

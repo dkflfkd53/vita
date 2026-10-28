@@ -3,6 +3,8 @@ package com.worklog.query;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.Optional;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -40,11 +42,11 @@ public class QueryStore {
                 rs.getString(10), rs.getString(11), rs.getInt(12) == 1)).list()
                 .stream()
                 // 관리하는 저장소에서 만든 세션만. project 는 화면 표시 이름(카테고리)으로 바꿔 넘긴다
-                .filter(s -> scope.managed(s.project()))
+                .filter(s -> scope.managed(s.cwd(), s.project()))
                 // 반복 업무 세션(배포 등)은 짧은 이름으로. 사용자가 직접 바꾼 이름이 있으면 그것이 이긴다
                 .map(s -> new SessionRow(s.id(), s.customTitle(), s.aiTitle(), s.firstPrompt(),
                         s.titleOverride() != null ? s.titleOverride() : routines.labelFor(originalTitle(s)).orElse(null), s.cwd(),
-                        scope.label(s.project()), s.gitBranch(), s.continuedIn(), s.firstAt(), s.lastAt(), s.hidden()))
+                        scope.label(s.cwd(), s.project()), s.gitBranch(), s.continuedIn(), s.firstAt(), s.lastAt(), s.hidden()))
                 .toList();
     }
 
@@ -95,14 +97,20 @@ public class QueryStore {
     }
 
     public List<CommitRow> commits(String from, String to) {
+        Map<String, Optional<String>> labels = new HashMap<>();
         return jdbc.sql("SELECT repo, hash, at, day, subject FROM git_commit WHERE day BETWEEN ? AND ? ORDER BY at")
                 .params(from, to)
                 .query((rs, i) -> new CommitRow(rs.getString(1), rs.getString(2), rs.getString(3),
                         rs.getString(4), rs.getString(5))).list()
                 .stream()
-                .filter(c -> scope.managed(c.repo()))
-                .map(c -> new CommitRow(scope.label(c.repo()), c.hash(), c.at(), c.day(), c.subject()))
+                .filter(c -> repoLabel(labels, c.repo()).isPresent())
+                .map(c -> new CommitRow(repoLabel(labels, c.repo()).orElseThrow(), c.hash(), c.at(), c.day(), c.subject()))
                 .toList();
+    }
+
+    /** 커밋의 저장소 → 카테고리(관리 대상이 아니면 빈 값). 저장소마다 한 번만 판정 */
+    private Optional<String> repoLabel(Map<String, Optional<String>> cache, String repo) {
+        return cache.computeIfAbsent(repo, r -> scope.managedRepo(r) ? Optional.of(scope.repoLabel(r)) : Optional.empty());
     }
 
     /** 관리 대상 커밋을 저장소 이름 그대로(같은 카테고리 안 저장소를 나눠 볼 때) */
@@ -111,7 +119,7 @@ public class QueryStore {
                 .params(from, to)
                 .query((rs, i) -> new CommitRow(rs.getString(1), rs.getString(2), rs.getString(3),
                         rs.getString(4), rs.getString(5))).list()
-                .stream().filter(c -> scope.managed(c.repo())).toList();
+                .stream().filter(c -> repoLabel(new HashMap<>(), c.repo()).isPresent()).toList();
     }
 
     /** 저장소별 수정 파일(커밋 전 포함) */

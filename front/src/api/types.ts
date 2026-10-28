@@ -550,6 +550,7 @@ export interface SettingCategory {
   oldName?: string | null
 }
 
+/** repo = 폴더 경로(~/work/회사A — 그 아래 전부) 또는 저장소 폴더 이름 */
 export interface ProjectRule {
   repo: string
   category: string
@@ -584,4 +585,6 @@ export interface SettingsAll {
   routines: RoutineRule[]
   workText: WorkTextConfig
   knownRepos: string[]
+  /** 규칙으로 고를 만한 폴더(본 저장소 루트와 그 상위, ~ 로 줄임) */
+  knownFolders: string[]
 }

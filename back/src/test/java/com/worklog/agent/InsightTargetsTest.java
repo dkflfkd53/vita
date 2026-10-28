@@ -75,7 +75,7 @@ class InsightTargetsTest {
         jdbc.sql("CREATE TABLE setting (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)").update();
         SettingsService settings = new SettingsService(jdbc, props);
         settings.saveProjects(List.of(new ProjectRule("my-app", "앱")));
-        InsightTargets t = new InsightTargets(props, jdbc, new ProjectScope(settings, null));
+        InsightTargets t = new InsightTargets(props, jdbc, new ProjectScope(settings, null, jdbc));
 
         assertThat(t.list()).extracting(ObserverViews.Target::key).contains("memory:my-app", "repo:my-app");
         Path file = t.apply(5, "memory:my-app", "긴 세션 쪼개기", "압축 2.5배", "- 120분 넘으면 요약 남기고 새 세션");

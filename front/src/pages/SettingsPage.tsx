@@ -158,15 +158,15 @@ function Projects({ data }: { data: SettingsAll }) {
   const used = new Set(list.map((r) => r.repo))
   return (
     <Section
-      title="저장소 → 카테고리"
-      hint="어느 git 저장소(폴더 이름)에서 만든 Claude 세션·커밋을 어느 카테고리로 볼지. 비워 두면 모든 저장소를 관리하고 이름은 저장소 이름 그대로예요. 하나라도 적으면 적은 저장소만 관리해요."
+      title="폴더 → 카테고리"
+      hint="어느 폴더 아래에서 연 Claude 세션·커밋을 어느 카테고리로 볼지. 폴더 경로를 적으면 그 아래 저장소·하위 폴더가 전부 따라오고, 여러 규칙에 걸리면 가장 가까운(깊은) 폴더가 이겨요. 저장소 이름만 적어도 돼요. 비워 두면 전부 관리하고 이름은 저장소 이름 그대로예요."
       dirty={dirty}
       onSave={() => api.saveProjects(list.filter((r) => r.repo.trim() && r.category.trim()))}
     >
-      {list.length === 0 && <p className="subtle st-empty">지금은 모든 저장소를 관리해요.</p>}
+      {list.length === 0 && <p className="subtle st-empty">지금은 모든 폴더를 관리해요.</p>}
       {list.map((r, i) => (
         <div key={i} className="st-row">
-          <input className="st-input" list="st-repos" value={r.repo} placeholder="저장소 폴더 이름" onChange={(e) => set(i, { repo: e.target.value })} />
+          <input className="st-input" list="st-repos" value={r.repo} placeholder="폴더 경로(~/work/회사A) 또는 저장소 이름" onChange={(e) => set(i, { repo: e.target.value })} />
           <span className="subtle">→</span>
           <select className="st-input" value={r.category} onChange={(e) => set(i, { category: e.target.value })}>
             <option value="">카테고리 고르기</option>
@@ -182,16 +182,16 @@ function Projects({ data }: { data: SettingsAll }) {
         </div>
       ))}
       <datalist id="st-repos">
-        {data.knownRepos
+        {[...data.knownFolders, ...data.knownRepos]
           .filter((r) => !used.has(r))
           .map((r) => (
             <option key={r} value={r} />
           ))}
       </datalist>
       <button className="btn btn-sm" onClick={() => setList([...list, { repo: '', category: data.categories[0]?.name ?? '' }])}>
-        + 저장소 연결
+        + 규칙 추가
       </button>
-      {data.knownRepos.length > 0 && <p className="subtle st-note">지금까지 본 저장소: {data.knownRepos.join(', ')}</p>}
+      {data.knownFolders.length > 0 && <p className="subtle st-note">고를 만한 폴더(입력칸을 누르면 목록): {data.knownFolders.join(', ')}</p>}
     </Section>
   )
 }

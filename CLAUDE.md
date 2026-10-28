@@ -40,12 +40,13 @@ Windows 에서 새로 설치했으면 PATH 가 새 터미널에서만 잡히므�
 
 설정은 화면 `/settings` 에서도 되지만, 여기서 같이 채워 주면 바로 쓸 수 있다. API 는 모두 `http://127.0.0.1:4100/api/settings`.
 
-1. `GET /api/settings` 로 지금 값을 본다. `knownRepos` = 지금까지 세션에서 본 git 저장소(처음엔 수집 전이라 비어 있을 수 있음 — 10초쯤 뒤 다시).
+1. `GET /api/settings` 로 지금 값을 본다. `knownRepos`·`knownFolders` = 지금까지 세션에서 본 git 저장소와 그 상위 폴더(처음엔 수집 전이라 비어 있을 수 있음 — 10초쯤 뒤 다시).
 2. **카테고리**: 할 일을 어떤 큰 단위로 나누는지 묻는다(예: 회사 프로젝트별, 개인). 기본값은 `업무`, `기타`.
    `PUT /api/settings/categories` 본문 = 순서대로 `[{"name":"프로젝트 A","color":"blue","oldName":"업무"},{"name":"기타","color":null,"oldName":"기타"}]`.
    `oldName` 은 기존 카테고리 이름을 바꿀 때만(할 일도 따라 바뀜). 색: gray·blue·green·yellow·red·purple·orange·teal·pink 또는 null(자동).
-3. **저장소 → 카테고리**: `knownRepos` 를 보여 주고 어느 저장소가 어느 카테고리인지 묻는다.
-   `PUT /api/settings/projects` 본문 = `[{"repo":"my-app","category":"프로젝트 A"}]`. **비워 두면 모든 저장소를 관리**하고, 하나라도 적으면 적은 것만 관리한다.
+3. **폴더 → 카테고리**: `knownFolders`(본 저장소와 그 상위 폴더)를 보여 주고 어느 폴더 아래가 어느 카테고리인지 묻는다.
+   `PUT /api/settings/projects` 본문 = `[{"repo":"~/work/acme","category":"프로젝트 A"},{"repo":"my-app","category":"기타"}]`.
+   `repo` 에 경로를 적으면 그 아래 전부(가장 가까운 규칙이 이김), 이름만 적으면 그 저장소. **비워 두면 모두 관리**하고, 하나라도 적으면 걸린 것만 관리한다.
 4. (선택) **반복 업무 세션** — 배포처럼 늘 돌리는 세션이 있으면: `PUT /api/settings/routines` 본문 = `[{"title":"원래 세션 제목","label":"표시 이름","color":"teal"}]`.
 5. (선택) **주간보고 갈래** — 사내 주간보고 양식이 있으면 화면 `/settings` 의 "주간보고 갈래"에서 지시·문체 예시를 적도록 안내한다(직접 고친 글이 다음 주 AI 작성의 예시가 됨).
 
