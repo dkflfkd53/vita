@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Vita">
-  <!-- 앱·탭 아이콘 A -->
-  <rect width="64" height="64" rx="16" fill="#2f3437"/>
-  <path d="M18 26L32 48L46 26" fill="none" stroke="#fdfdfd" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="46" cy="14" r="5" fill="#f2843d"/>
-</svg>

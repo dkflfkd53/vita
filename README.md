@@ -1,4 +1,4 @@
-<p align="center"><img src="front/public/brand/vita-logo-a-on-white.svg" width="360" alt="Vita"></p>
+<p align="center"><img src="front/public/brand/vita-logo-on-white.svg" width="360" alt="Vita"></p>
 
 # Vita
 

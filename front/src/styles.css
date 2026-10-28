@@ -140,7 +140,8 @@ button { font: inherit; color: inherit; }
   display: flex; flex-direction: column; min-height: 0;
 }
 .brand { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 20px 18px 14px; color: var(--text); }
-.brand-logo { border: 0; background: none; padding: 0; color: inherit; cursor: pointer; }
+.brand-logo { color: inherit; text-decoration: none; border-radius: 6px; }
+.brand-logo:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .brand small { display: block; color: var(--text-subtle); font-weight: 450; font-size: 11.5px; }
 
 .nav { padding: 4px 8px; display: flex; flex-direction: column; gap: 1px; }

@@ -6,11 +6,10 @@ import type { LiveView, TaskWork } from '../api/types'
 import { fmtRelative } from '../lib/format'
 import { useTheme, type ThemeChoice } from '../lib/theme'
 import { Icon } from './Icon'
-import { VitaLogo, useLogoVariant } from './VitaLogo'
+import { VitaLogo } from './VitaLogo'
 import { StatusDot } from './common'
 
 export function Sidebar() {
-  const [logo, toggleLogo] = useLogoVariant()
   const { data } = useOverview()
   const { data: jobs } = useJobs()
   const qc = useQueryClient()
@@ -36,9 +35,9 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <button type="button" className="brand-logo" onClick={toggleLogo} title="눌러서 로고 바꿔 보기 (A 동그라미 점 / E 새싹 점)">
-          <VitaLogo height={24} variant={logo} />
-        </button>
+        <Link to="/" className="brand-logo" aria-label="Vita — 업무로">
+          <VitaLogo height={20} />
+        </Link>
         <small>에이전트 세션 기반 업무 관리</small>
       </div>
 
