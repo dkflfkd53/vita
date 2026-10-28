@@ -2,7 +2,7 @@
 
 # Vita
 
-**Claude Code·Codex 세션 기록으로 내 업무를 정리하는 로컬 웹앱.** 주간 계획 → AI 코딩 도구로 진행 → 주간·월간 보고까지 한 곳에서.
+**에이전트 세션 기반 업무 관리.** Claude Code·Codex 세션 기록으로 내 업무를 정리하는 로컬 웹앱. 주간 계획 → AI 코딩 도구로 진행 → 주간·월간 보고까지 한 곳에서.
 
 > A local web app (macOS · Windows) that turns your Claude Code and Codex session history into a weekly task board, calendar, AI-written reports and agent-usage analytics. Everything stays on your machine (`127.0.0.1`). UI is in Korean.
 
