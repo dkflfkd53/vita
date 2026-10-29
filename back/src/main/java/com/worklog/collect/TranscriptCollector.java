@@ -54,7 +54,7 @@ public class TranscriptCollector {
                     changed++;
                     lines += n;
                 }
-            } catch (IOException | RuntimeException e) {
+            } catch (IOException | RuntimeException | StackOverflowError e) {
                 log.warn("세션 파일 수집 실패 {}: {}", file.getFileName(), e.toString());
             }
         }

@@ -39,6 +39,16 @@ class CodexParserTest {
         assertThat(patch.patchedFiles()).containsExactly("/work/app/A.java", "/work/app/B.java");
     }
 
+    /** 수천 자짜리 명령(이스케이프 따옴표 섞임)에서 StackOverflowError 가 나 수집이 멈추던 문제 */
+    @Test
+    void veryLongCommandDoesNotOverflow() {
+        String cmd = "echo " + "a\\\\\\\"b ".repeat(200_000);
+        CodexParser.Line l = CodexParser.parse("{" + TS + ",\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call\",\"call_id\":\"c9\","
+                + "\"name\":\"exec\",\"input\":\"tools.exec_command({cmd:\\\"" + cmd + "\\\"})\"}}", 9);
+        assertThat(l.toolStart().name()).isEqualTo("exec_command");
+        assertThat(l.toolStart().target()).startsWith("echo a\"b a\"b").hasSizeLessThanOrEqualTo(501);
+    }
+
     @Test
     void toolOutputExitCode() {
         CodexParser.Line ok = CodexParser.parse("{" + TS + ",\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call_output\",\"call_id\":\"c1\","

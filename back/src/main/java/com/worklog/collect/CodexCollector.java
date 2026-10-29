@@ -70,7 +70,7 @@ public class CodexCollector {
         for (Path f : files) {
             try {
                 total += ingest(f, titles, imported);
-            } catch (IOException | RuntimeException e) {
+            } catch (IOException | RuntimeException | StackOverflowError e) {
                 log.warn("Codex 세션 수집 실패 {}: {}", f.getFileName(), e.toString());
             }
         }
@@ -151,7 +151,14 @@ public class CodexCollector {
         int[] ordinal = {0};
         long consumed = JsonlTail.read(file, offset, raw -> {
             ordinal[0]++;
-            CodexParser.Line l = CodexParser.parse(raw, ordinal[0]);
+            CodexParser.Line l;
+            try {
+                l = CodexParser.parse(raw, ordinal[0]);
+            } catch (RuntimeException | StackOverflowError e) {
+                // 한 줄을 못 읽어도 그 파일·뒤 파일 수집은 계속한다(못 읽은 줄만 빠짐)
+                log.warn("Codex 세션 {} {}번째 줄 건너뜀 ({}자): {}", file.getFileName(), ordinal[0], raw.length(), e.toString());
+                return;
+            }
             if (l == null) {
                 return;
             }

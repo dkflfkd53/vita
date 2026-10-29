@@ -28,7 +28,8 @@ public final class CodexParser {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Pattern INNER_TOOL = Pattern.compile("tools\\.(\\w+)\\(");
-    private static final Pattern CMD = Pattern.compile("cmd\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+    /** 앞 600자만 — 반복 그룹을 끝없이 돌리면 긴 명령(수천 자)에서 StackOverflowError 가 난다. 화면엔 500자만 쓴다 */
+    private static final Pattern CMD = Pattern.compile("cmd\\s*:\\s*\"((?:[^\"\\\\]|\\\\.){0,600})");
     private static final Pattern PATCH_FILE = Pattern.compile("\\*\\*\\* (?:Add|Update|Delete) File: (.+?)(?:\\\\n|\\n|\")");
     private static final Pattern EXIT_CODE = Pattern.compile("exit_code\\\\?\"?\\s*:\\s*(-?\\d+)");
     private static final int TARGET_MAX = 500;

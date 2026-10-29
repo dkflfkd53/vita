@@ -54,7 +54,7 @@ public class UsageCollector {
         for (Path f : files) {
             try {
                 total += ingest(f);
-            } catch (IOException | RuntimeException e) {
+            } catch (IOException | RuntimeException | StackOverflowError e) {
                 log.warn("사용량 수집 실패 {}: {}", f.getFileName(), e.toString());
             }
         }
