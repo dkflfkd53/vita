@@ -381,6 +381,11 @@ function TodoItem({ item, board, open, onOpen, onClose }: { item: WorkItem; boar
             계획 외
           </span>
         )}
+        {board.kind === 'week' && !done && item.weeks.includes(board.nextKey) && (
+          <span className="meta-pill" style={tint('var(--c-gray)')} title={`${weekLabel(board.nextKey)} 계획에도 들어 있어요`}>
+            차주 이월
+          </span>
+        )}
         <span className="t-right">
           {item.status === 'ON_HOLD' && <span className="t-hold">보류</span>}
           {item.dueDate && (
@@ -473,6 +478,11 @@ function RowMenu({ item, board }: { item: WorkItem; board: Board }) {
   const unplan = useWorkMutation(() => api.unplanItem(board.weekKey, item.id))
   const plan = useWorkMutation(() => api.planItem(board.weekKey, item.id))
   const remove = useWorkMutation(() => api.deleteWorkItem(item.id))
+  // 차주 이월 = 다음 주 계획에도 넣기(이번 주 기록은 그대로). 주 보기에서 끝나지 않은 할 일만
+  const nextWeek = board.kind === 'week' && item.status !== 'DONE' ? board.nextKey : null
+  const carried = !!nextWeek && item.weeks.includes(nextWeek)
+  const carry = useWorkMutation(() => api.planItem(nextWeek!, item.id))
+  const uncarry = useWorkMutation(() => api.unplanItem(nextWeek!, item.id))
   return (
     <div className="row-menu" ref={ref}>
       <button className="todo-more" onClick={() => setOpen(!open)} aria-label="더보기">
@@ -488,6 +498,27 @@ function RowMenu({ item, board }: { item: WorkItem; board: Board }) {
               <button onClick={() => unplan.mutate(undefined)}>이번 주에서 빼기</button>
             ) : (
               <button onClick={() => plan.mutate(undefined)}>이번 주 계획에 넣기</button>
+            ))}
+          {nextWeek &&
+            (carried ? (
+              <button
+                onClick={() => {
+                  uncarry.mutate(undefined)
+                  setOpen(false)
+                }}
+              >
+                차주 이월 취소
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  carry.mutate(undefined)
+                  setOpen(false)
+                }}
+                title={`${weekLabel(nextWeek)} 계획에 넣어요. 이번 주 기록은 그대로 남아요`}
+              >
+                차주로 이월
+              </button>
             ))}
           <button
             className="danger"
