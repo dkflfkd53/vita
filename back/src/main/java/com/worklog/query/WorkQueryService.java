@@ -335,7 +335,7 @@ public class WorkQueryService {
         String sc = scopeLabel == null || scopeLabel.isBlank() ? null : scopeLabel;
         Predicate<String> in = id -> {
             SessionRow s = sessions.get(id);
-            return s != null && index.taskOfSession().containsKey(id) && (sc == null || sc.equals(scope.label(s.cwd(), s.project())));
+            return s != null && index.taskOfSession().containsKey(id) && (sc == null || sc.equals(s.project()));
         };
         UsageService.Index u = usage.index(from, to);
         // 한 달 전체면 지난달, 아니면 바로 앞 같은 길이

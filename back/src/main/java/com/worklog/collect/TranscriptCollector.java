@@ -133,6 +133,7 @@ public class TranscriptCollector {
     private void finish(SessionAccumulator acc) {
         if (acc.cwd != null) {
             Path cwd = Path.of(acc.cwd);
+            acc.repoRoot = git.toplevel(cwd).map(Path::toString).orElse(null);
             acc.project = repoOf(cwd).orElseGet(() ->
                     cwd.equals(Path.of(System.getProperty("user.home"))) ? "~" : String.valueOf(cwd.getFileName()));
         }

@@ -30,7 +30,8 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Codex CLI 세션을 Claude Code 세션과 같은 표(session·session_day·prompt·file_edit·usage_event·agent_*)에 옮겨 적는다.
- * 원본 = ~/.codex/sessions/YYYY/MM/DD/rollout-…-{세션 id}.jsonl, 제목 = ~/.codex/session_index.jsonl 의 마지막 thread_name.
+ * 원본 = ~/.codex/sessions/YYYY/MM/DD/rollout-…-{세션 id}.jsonl(Codex 앱에서 보관하면 ~/.codex/archived_sessions 로 옮겨짐),
+ * 제목 = ~/.codex/session_index.jsonl 의 마지막 thread_name. Codex 앱의 프로젝트 대화도 같은 파일로 남는다.
  * 세션 표의 source = codex. 위치 기록은 ingest_file 에 "codex:" 를 붙인 경로로.
  * Codex 가 가져온(import) Claude Code 세션은 가져온 시각에 지난 대화가 통째로 다시 찍힌다 — 그 부분은 Claude 쪽에서 이미 모았으니
  * 건너뛰고, 가져온 뒤 Codex 에서 이어서 한 작업만 모은다(external_agent_session_imports.json).
@@ -56,16 +57,20 @@ public class CodexCollector {
 
     /** @return 새로 읽은 줄 수 */
     public int collectAll() throws IOException {
-        Path sessions = codexHome().resolve("sessions");
-        if (!Files.isDirectory(sessions)) {
+        List<Path> files = new ArrayList<>();
+        for (String dir : List.of("sessions", "archived_sessions")) {
+            Path root = codexHome().resolve(dir);
+            if (Files.isDirectory(root)) {
+                try (Stream<Path> s = Files.walk(root)) {
+                    s.filter(p -> p.getFileName().toString().endsWith(".jsonl")).sorted().forEach(files::add);
+                }
+            }
+        }
+        if (files.isEmpty()) {
             return 0;
         }
         Map<String, String> titles = titles();
         Map<String, Long> imported = imports();
-        List<Path> files;
-        try (Stream<Path> s = Files.walk(sessions)) {
-            files = s.filter(p -> p.getFileName().toString().endsWith(".jsonl")).sorted().toList();
-        }
         int total = 0;
         for (Path f : files) {
             try {
@@ -127,12 +132,13 @@ public class CodexCollector {
     private int ingest(Path file, Map<String, String> titles, Map<String, Long> imported) throws IOException {
         String key = "codex:" + file;
         long size = Files.size(file);
-        long offset = store.readOffset(key).orElse(0L);
         Matcher idm = FILE_ID.matcher(file.getFileName().toString());
         if (!idm.find()) {
             return 0;
         }
         String sid = idm.group(1);
+        // 보관하며 옮겨진 파일은 경로가 바뀐다 — 예전 경로에서 읽은 데까지 이어서(처음부터 다시 읽으면 시간이 두 번 셈)
+        long offset = store.readOffset(key).orElseGet(() -> movedOffset(sid, size));
         String title = titles.get(sid);
         Long importedAt = imported.get(sid);
         if (size == offset) {
@@ -219,6 +225,7 @@ public class CodexCollector {
         }
         if (acc.cwd != null) {
             Path cwd = Path.of(acc.cwd);
+            acc.repoRoot = git.toplevel(cwd).map(Path::toString).orElse(null);
             acc.project = repoOf(cwd).orElseGet(() ->
                     cwd.equals(Path.of(System.getProperty("user.home"))) ? "~" : String.valueOf(cwd.getFileName()));
         }
@@ -226,6 +233,13 @@ public class CodexCollector {
         usage.save(usageRows, props.zone(), key, consumed);
         agent.save(items, props.zone(), key, consumed);
         return ordinal[0];
+    }
+
+    /** 같은 세션 id 를 다른 경로에서 읽은 기록(파일이 그보다 작으면 다른 파일이라 처음부터) */
+    private long movedOffset(String sid, long size) {
+        return jdbc.sql("SELECT read_offset FROM ingest_file WHERE path LIKE 'codex:%' AND path LIKE ? ORDER BY read_offset DESC LIMIT 1")
+                .param("%" + sid + ".jsonl").query(Long.class).optional()
+                .filter(o -> o <= size).orElse(0L);
     }
 
     /** 원본은 그대로인데 Codex 에서 이름만 바꾼 경우 */

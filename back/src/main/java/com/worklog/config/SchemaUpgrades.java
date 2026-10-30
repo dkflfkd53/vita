@@ -24,6 +24,8 @@ public class SchemaUpgrades {
         addColumn("category", "color", "TEXT");
         // claude | codex — 비어 있으면 claude(예전 기록)
         addColumn("session", "source", "TEXT");
+        // 작업 폴더의 저장소 루트(worktree 면 원래 저장소) — 폴더 규칙을 원래 위치로 맞춘다
+        addColumn("session", "repo_root", "TEXT");
         // 고정 연결은 건 날부터만 적용(과거 작업 소급 방지). 컬럼 생기기 전 고정은 모두 2026-10-26 에 만든 것
         if (addColumn("session_pin", "pinned_from", "TEXT")) {
             jdbc.sql("UPDATE session_pin SET pinned_from = '2026-10-26' WHERE pinned_from IS NULL").update();

@@ -25,6 +25,8 @@ final class SessionAccumulator {
     String continuedIn;
     /** claude | codex — 어느 도구의 세션인가 */
     String source;
+    /** 작업 폴더가 속한 저장소 루트(worktree 면 원래 저장소). 작업 사본이 지워진 뒤에도 폴더 규칙을 맞추려고 남긴다 */
+    String repoRoot;
     Instant firstAt;
     Instant lastAt;
     Instant lastEventAt;

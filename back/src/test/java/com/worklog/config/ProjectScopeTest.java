@@ -38,6 +38,15 @@ class ProjectScopeTest {
         assertThat(sc.resolve("/home/me/toy", "toy")).isEmpty();
     }
 
+    /** Codex 앱 프로젝트 등 worktree 에서 연 세션 — 작업 폴더는 규칙 밖이어도 원래 저장소 루트로 맞춘다 */
+    @Test
+    void worktreeFallsBackToRepoRoot() {
+        ProjectScope sc = scope(List.of(new ProjectRule("/work/acme", "회사")));
+        assertThat(sc.resolve("/home/me/.codex/worktrees/1a2b/api", "api", "/work/acme/api")).contains("회사");
+        assertThat(sc.resolve("/home/me/.codex/worktrees/1a2b/api", "api", null)).isEmpty();
+        assertThat(sc.resolve("/home/me/.codex/worktrees/1a2b/toy", "toy", "/home/me/toy")).isEmpty();
+    }
+
     @Test
     void nameRuleStillWorksAndPathRulesComeFirst() {
         ProjectScope sc = scope(List.of(new ProjectRule("toy", "개인"), new ProjectRule("/work/acme", "회사"), new ProjectRule("api", "이름규칙")));

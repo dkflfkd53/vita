@@ -35,19 +35,26 @@ public class QueryStore {
     public List<SessionRow> sessions() {
         return jdbc.sql("""
                 SELECT id, custom_title, ai_title, first_prompt, title_override, cwd, project, git_branch, continued_in,
-                       first_at, last_at, hidden, source
+                       first_at, last_at, hidden, source, repo_root
                 FROM session WHERE first_at IS NOT NULL
-                """).query((rs, i) -> new SessionRow(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4),
+                """).query((rs, i) -> new Scoped(new SessionRow(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4),
                 rs.getString(5), rs.getString(6), rs.getString(7), rs.getString(8), rs.getString(9),
-                rs.getString(10), rs.getString(11), rs.getInt(12) == 1, rs.getString(13))).list()
+                rs.getString(10), rs.getString(11), rs.getInt(12) == 1, rs.getString(13)), rs.getString(14))).list()
                 .stream()
                 // 관리하는 저장소에서 만든 세션만. project 는 화면 표시 이름(카테고리)으로 바꿔 넘긴다
-                .filter(s -> scope.managed(s.cwd(), s.project()))
+                .filter(r -> scope.managed(r.row().cwd(), r.row().project(), r.repoRoot()))
+                .map(r -> new SessionRow(r.row().id(), r.row().customTitle(), r.row().aiTitle(), r.row().firstPrompt(),
+                        r.row().titleOverride(), r.row().cwd(), scope.label(r.row().cwd(), r.row().project(), r.repoRoot()),
+                        r.row().gitBranch(), r.row().continuedIn(), r.row().firstAt(), r.row().lastAt(), r.row().hidden(), r.row().source()))
                 // 반복 업무 세션(배포 등)은 짧은 이름으로. 사용자가 직접 바꾼 이름이 있으면 그것이 이긴다
                 .map(s -> new SessionRow(s.id(), s.customTitle(), s.aiTitle(), s.firstPrompt(),
                         s.titleOverride() != null ? s.titleOverride() : routines.labelFor(originalTitle(s)).orElse(null), s.cwd(),
-                        scope.label(s.cwd(), s.project()), s.gitBranch(), s.continuedIn(), s.firstAt(), s.lastAt(), s.hidden(), s.source()))
+                        s.project(), s.gitBranch(), s.continuedIn(), s.firstAt(), s.lastAt(), s.hidden(), s.source()))
                 .toList();
+    }
+
+    /** repoRoot = 작업 폴더의 저장소 루트(worktree 면 원래 저장소) — 범위 판정에만 쓴다 */
+    private record Scoped(SessionRow row, String repoRoot) {
     }
 
     private static String originalTitle(SessionRow s) {

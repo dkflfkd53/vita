@@ -27,6 +27,7 @@ import lombok.RequiredArgsConstructor;
  *   <li>이름 규칙(`my-app`): 세션이 속한 git 저장소의 폴더 이름이 같으면. 경로 규칙에 안 걸렸을 때만 본다</li>
  * </ul>
  * 규칙이 하나도 없으면 전부 관리하고 표시 이름은 저장소 이름 그대로. 하나라도 있으면 걸린 것만 관리한다.
+ * git worktree(Codex 앱 프로젝트의 작업 사본 등)에서 연 세션은 작업 폴더가 규칙 밖이어도 원래 저장소 루트(repoRoot)로 한 번 더 본다.
  */
 @Component
 @RequiredArgsConstructor
@@ -56,16 +57,19 @@ public class ProjectScope {
 
     /** 세션·저장소의 카테고리. dir = 세션 작업 폴더(또는 저장소 루트), repoName = 그 폴더가 속한 저장소 이름 */
     public Optional<String> resolve(String dir, String repoName) {
+        return resolve(dir, repoName, null);
+    }
+
+    /** repoRoot = 작업 폴더가 속한 저장소 루트(worktree 면 원래 저장소) — 작업 폴더가 경로 규칙에 안 걸리면 이것으로 본다 */
+    public Optional<String> resolve(String dir, String repoName, String repoRoot) {
         List<Rule> rules = rules();
         if (rules.isEmpty()) {
             return Optional.ofNullable(repoName);
         }
-        if (dir != null && !dir.isBlank()) {
-            Path p = normalize(Path.of(dir));
-            for (Rule r : rules) {
-                if (r.path() != null && p.startsWith(r.path())) {
-                    return Optional.of(r.category());
-                }
+        for (String d : new String[] {dir, repoRoot}) {
+            Optional<String> c = byPath(rules, d);
+            if (c.isPresent()) {
+                return c;
             }
         }
         for (Rule r : rules) {
@@ -76,15 +80,28 @@ public class ProjectScope {
         return Optional.empty();
     }
 
+    private static Optional<String> byPath(List<Rule> rules, String dir) {
+        if (dir == null || dir.isBlank()) {
+            return Optional.empty();
+        }
+        Path p = normalize(Path.of(dir));
+        for (Rule r : rules) {
+            if (r.path() != null && p.startsWith(r.path())) {
+                return Optional.of(r.category());
+            }
+        }
+        return Optional.empty();
+    }
+
     // ───────── 세션 ─────────
 
-    public boolean managed(String cwd, String repoName) {
-        return resolve(cwd, repoName).isPresent();
+    public boolean managed(String cwd, String repoName, String repoRoot) {
+        return resolve(cwd, repoName, repoRoot).isPresent();
     }
 
     /** 표시 이름(카테고리). 관리 대상이 아니면 저장소 이름 그대로 */
-    public String label(String cwd, String repoName) {
-        return resolve(cwd, repoName).orElse(repoName);
+    public String label(String cwd, String repoName, String repoRoot) {
+        return resolve(cwd, repoName, repoRoot).orElse(repoName);
     }
 
     /** 아직 수집 전인 막 연 세션 — 작업 폴더로 판정 */
@@ -93,8 +110,9 @@ public class ProjectScope {
             return Optional.empty();
         }
         Path dir = Path.of(cwd);
-        String repo = git.toplevel(dir).map(p -> String.valueOf(p.getFileName())).orElse(String.valueOf(dir.getFileName()));
-        return resolve(cwd, repo);
+        Optional<Path> root = git.toplevel(dir);
+        String repo = root.map(p -> String.valueOf(p.getFileName())).orElse(String.valueOf(dir.getFileName()));
+        return resolve(cwd, repo, root.map(Path::toString).orElse(null));
     }
 
     // ───────── 커밋·저장소(이름만 아는 것) ─────────
