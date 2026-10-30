@@ -231,8 +231,22 @@ public class WorkTextService {
         return m;
     }
 
-    /** 차주 계획 초안 — 전체 업무 내용과 같은 모양으로 카테고리별 할 일 이름(마감·보드 표시) */
+    /** 짧게 쓰는 요약 갈래인가(최대 줄 수 6 이하) — 차주 계획도 "- " 몇 줄로 */
+    private static boolean shortForm(Part part) {
+        return part.def().maxLines() != null && part.def().maxLines() <= 6;
+    }
+
+    /**
+     * 차주 계획 초안 — 전체 업무 내용과 같은 모양으로 카테고리별 할 일 이름(마감·보드 표시).
+     * 짧은 요약 갈래(최대 줄 수 6 이하)면 "- 할 일" 몇 줄, 해당 할 일이 없으면 빈칸
+     */
     private String nextDraft(Part part, Board board) {
+        if (shortForm(part)) {
+            StringBuilder sb = new StringBuilder();
+            nextItems(board).stream().filter(i -> matches(part, i)).limit(maxLines(part))
+                    .forEach(i -> sb.append("- ").append(i.title()).append(i.dueDate() == null ? "" : " (~" + mmdd(i.dueDate()) + ")").append('\n'));
+            return sb.toString();
+        }
         Map<String, List<ItemView>> groups = new LinkedHashMap<>();
         board.categories().forEach(c -> groups.put(c, new ArrayList<>()));
         for (ItemView i : nextItems(board)) {
@@ -259,7 +273,7 @@ public class WorkTextService {
                 }
             }
         }
-        return any ? sb.toString() : sb.append("- (다음 주 할 일 없음 — 업무 화면에서 다음 주 할 일을 넣거나 이번 주 할 일 상태를 확인하세요)\n").toString();
+        return any ? sb.toString() : "";
     }
 
     /**
@@ -562,7 +576,8 @@ public class WorkTextService {
         if (part.next()) {
             return "입력의 [차주 계획 후보] 중 \"(" + part.title() + " 해당)\" 표시가 있는 것으로 다음 주에 할 일. 첫 줄 \"[" + part.title()
                     + "]\", 빈 줄, 그다음 카테고리마다 \"- 카테고리\"(4칸 들여쓰기 업무 \"- 업무명 (마감 M/D 또는 진행률)\", 8칸 세부 0~2줄). "
-                    + "세부는 메모·최근 작업에서 아직 남은 일, 이어서 할 일만 \"~ 예정\" 체로. 근거가 없으면 세부 없이 업무명만. 완료된 일·이번 주 실적은 쓰지 않는다";
+                    + "세부는 메모·최근 작업에서 아직 남은 일, 이어서 할 일만 \"~ 예정\" 체로. 근거가 없으면 세부 없이 업무명만. 완료된 일·이번 주 실적은 쓰지 않는다. "
+                    + "해당하는 할 일이 하나도 없으면 아무것도 쓰지 않는다(빈칸)";
         }
         if ("commits".equals(part.def().source())) {
             String repos = part.def().repos().isEmpty() ? "관리하는 저장소" : String.join(", ", part.def().repos());

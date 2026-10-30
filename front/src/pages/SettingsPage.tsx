@@ -424,12 +424,10 @@ function WorkTextParts({ data }: { data: SettingsAll }) {
                 <option value="next">차주 계획 (다음 주 할 일 · 못 끝낸 일 · 다음 주 마감)</option>
               </select>
             </label>
-            {p.source !== 'next' && (
-              <label className="st-field">
-                최대 줄 수
-                <input type="number" min={1} max={12} value={p.maxLines ?? 3} onChange={(e) => setPart(i, { maxLines: Number(e.target.value) || 3 })} />
-              </label>
-            )}
+            <label className="st-field" title={p.source === 'next' ? '6 이하면 "- " 몇 줄짜리 짧은 요약, 그보다 크면 카테고리별 전체 형식' : undefined}>
+              {p.source === 'next' ? '최대 줄 수 (6 이하 = 짧은 요약)' : '최대 줄 수'}
+              <input type="number" min={1} max={12} value={p.maxLines ?? 3} onChange={(e) => setPart(i, { maxLines: Number(e.target.value) || 3 })} />
+            </label>
           </div>
           {p.source !== 'commits' ? (
             <>
@@ -479,11 +477,9 @@ function WorkTextParts({ data }: { data: SettingsAll }) {
         <button className="btn btn-sm" onClick={() => addPart('items')}>
           + 요약 갈래 추가
         </button>
-        {!cfg.parts.some((p) => p.source === 'next') && (
-          <button className="btn btn-sm" onClick={() => addPart('next')}>
-            + 차주 계획 추가
-          </button>
-        )}
+        <button className="btn btn-sm" onClick={() => addPart('next')}>
+          + 차주 계획 추가
+        </button>
       </div>
     </Section>
   )
