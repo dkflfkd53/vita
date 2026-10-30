@@ -1182,3 +1182,13 @@ a.tg-title:hover { color: var(--accent); }
   .cal-toolbar h2 { min-width: 0 !important; }
 }
 .segmented.sm button { padding: 2px 9px; font-size: 12px; }
+/* 카테고리 안 세부 분류 머리 줄 */
+.t-subhead { display: flex; align-items: baseline; gap: 6px; padding: 10px 6px 2px; font-size: 12px; font-weight: 650; color: var(--text-muted); letter-spacing: 0.02em; }
+.t-subhead .count { font-weight: 500; color: var(--text-subtle); font-variant-numeric: tabular-nums; }
+.t-subhead.unsorted { color: var(--text-subtle); font-weight: 550; }
+.st-cat { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.st-input.st-sub { flex: none; height: 28px; margin-left: 94px; width: calc(100% - 94px - 110px); font-size: 12.5px; }
+@media (max-width: 720px) { .st-input.st-sub { margin-left: 0; width: 100%; } }
+.st-fill { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; }
+.st-grid > * { min-width: 0; }
+@media (max-width: 720px) { .st-grid { grid-template-columns: 1fr !important; } .st-field select, .st-field input { max-width: 100%; } }

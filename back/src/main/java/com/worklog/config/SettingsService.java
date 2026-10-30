@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -17,6 +18,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.worklog.config.Settings.Category;
@@ -87,8 +89,30 @@ public class SettingsService {
     }
 
     public List<Category> categories() {
-        return jdbc.sql("SELECT name, color FROM category ORDER BY sort, name")
-                .query((rs, i) -> new Category(rs.getString(1), rs.getString(2), null)).list();
+        return jdbc.sql("SELECT name, color, subtypes FROM category ORDER BY sort, name")
+                .query((rs, i) -> new Category(rs.getString(1), rs.getString(2), null, subtypesOf(rs.getString(3)))).list();
+    }
+
+    /** 카테고리 이름 → 세부 분류(있는 것만) */
+    public Map<String, List<String>> subtypes() {
+        Map<String, List<String>> m = new LinkedHashMap<>();
+        categories().forEach(c -> {
+            if (!c.subtypes().isEmpty()) {
+                m.put(c.name(), c.subtypes());
+            }
+        });
+        return m;
+    }
+
+    private static List<String> subtypesOf(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return MAPPER.readValue(json, new TypeReference<List<String>>() { });
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -150,6 +174,9 @@ public class SettingsService {
             if (c.color() != null && !c.color().isBlank() && !COLORS.contains(c.color())) {
                 throw new IllegalArgumentException("모르는 색: " + c.color());
             }
+            if (nonNull(c.subtypes()).size() > 12) {
+                throw new IllegalArgumentException("'" + name + "' 세부 분류는 12개까지");
+            }
         }
         Set<String> keep = new HashSet<>();
         for (int i = 0; i < list.size(); i++) {
@@ -161,10 +188,27 @@ public class SettingsService {
                 jdbc.sql("UPDATE work_item SET category = ? WHERE category = ?").params(name, old).update();
                 renameProjectCategory(old, name);
             }
+            if (c.subtypes() == null) {
+                // 세부 분류를 모르는 요청(예전 화면·설치 안내)은 있던 세부 분류를 그대로 둔다
+                jdbc.sql("""
+                        INSERT INTO category (name, sort, color) VALUES (?, ?, ?)
+                        ON CONFLICT(name) DO UPDATE SET sort = excluded.sort, color = excluded.color
+                        """).params(name, i + 1, blankToNull(c.color())).update();
+                keep.add(name);
+                continue;
+            }
+            List<String> subs = new ArrayList<>(new LinkedHashSet<>(nonNull(c.subtypes())));
             jdbc.sql("""
-                    INSERT INTO category (name, sort, color) VALUES (?, ?, ?)
-                    ON CONFLICT(name) DO UPDATE SET sort = excluded.sort, color = excluded.color
-                    """).params(name, i + 1, blankToNull(c.color())).update();
+                    INSERT INTO category (name, sort, color, subtypes) VALUES (?, ?, ?, ?)
+                    ON CONFLICT(name) DO UPDATE SET sort = excluded.sort, color = excluded.color, subtypes = excluded.subtypes
+                    """).params(name, i + 1, blankToNull(c.color()), subs.isEmpty() ? null : json(subs)).update();
+            // 목록에서 빠진 세부 분류를 쓰던 할 일은 비운다
+            if (subs.isEmpty()) {
+                jdbc.sql("UPDATE work_item SET subtype = NULL WHERE category = ? AND subtype IS NOT NULL").param(name).update();
+            } else {
+                jdbc.sql("UPDATE work_item SET subtype = NULL WHERE category = :name AND subtype IS NOT NULL AND subtype NOT IN (:subs)")
+                        .param("name", name).param("subs", subs).update();
+            }
             keep.add(name);
         }
         for (Category existing : categories()) {
@@ -277,10 +321,18 @@ public class SettingsService {
                     INSERT INTO setting (key, value, updated_at) VALUES (?, ?, ?)
                     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
                     """).params(key, MAPPER.writeValueAsString(value), Instant.now().toString()).update();
-        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+        } catch (JsonProcessingException e) {
             throw new IllegalStateException(e);
         }
         cache.remove(key);
+    }
+
+    private static String json(Object value) {
+        try {
+            return MAPPER.writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private static List<String> nonNull(List<String> l) {

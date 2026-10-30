@@ -19,6 +19,7 @@ import com.worklog.report.Period;
 import com.worklog.report.WorkTextService;
 import com.worklog.summary.JobService.JobView;
 import com.worklog.work.ClassifyService;
+import com.worklog.work.SubtypeService;
 import com.worklog.work.WorkService;
 import com.worklog.work.WorkViews;
 import com.worklog.work.WorkViews.Board;
@@ -39,6 +40,7 @@ public class WorkController {
     private final WorkService work;
     private final ClassifyService classify;
     private final WorkTextService workText;
+    private final SubtypeService subtypes;
 
     @GetMapping("/weeks/{week}/board")
     public Board board(@PathVariable String week) {
@@ -124,6 +126,12 @@ public class WorkController {
     public ResponseEntity<Void> delete(@PathVariable long id) {
         work.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    /** 세부 분류가 빈 할 일을 AI 로 채운다(설정의 카테고리 세부 분류 기준) */
+    @PostMapping("/work-items/subtypes/fill")
+    public JobView fillSubtypes() {
+        return subtypes.submitFill().view();
     }
 
     @PostMapping("/work-items/from-session")

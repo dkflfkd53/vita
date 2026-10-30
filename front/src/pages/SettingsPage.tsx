@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useSettings } from '../api/hooks'
+import { useLastJob, useRunningJob, useSettings, useStartJob } from '../api/hooks'
 import { api } from '../api/client'
 import type { AiConfig, ProjectRule, ReportTemplate, RoutineRule, SettingCategory, SettingsAll, WorkTextConfig, WorkTextPartDef } from '../api/types'
 import { Icon } from '../components/Icon'
@@ -120,9 +120,15 @@ function useDraft<T>(initial: T) {
 
 // ───────── 카테고리 ─────────
 
+type CategoryDraft = SettingCategory & { subtypesText: string }
+
+const splitList = (text: string) => [...new Set(text.split(',').map((v) => v.trim()).filter(Boolean))]
+
 function Categories({ data }: { data: SettingsAll }) {
-  const [list, setList, dirty] = useDraft<SettingCategory[]>(data.categories.map((c) => ({ ...c, oldName: c.name })))
-  const set = (i: number, patch: Partial<SettingCategory>) => setList(list.map((c, k) => (k === i ? { ...c, ...patch } : c)))
+  const [list, setList, dirty] = useDraft<CategoryDraft[]>(
+    data.categories.map((c) => ({ ...c, oldName: c.name, subtypesText: c.subtypes.join(', ') })),
+  )
+  const set = (i: number, patch: Partial<CategoryDraft>) => setList(list.map((c, k) => (k === i ? { ...c, ...patch } : c)))
   const move = (i: number, d: number) => {
     const j = i + d
     if (j < 0 || j >= list.length) return
@@ -130,32 +136,65 @@ function Categories({ data }: { data: SettingsAll }) {
     ;[next[i], next[j]] = [next[j], next[i]]
     setList(next)
   }
+  const hasSubtypes = data.categories.some((c) => c.subtypes.length > 0)
   return (
     <Section
       title="카테고리"
-      hint="할 일을 묶는 큰 단위(예: 프로젝트 A, 프로젝트 B, 기타). 순서대로 업무 화면·사이드바·주간보고에 나와요. 이름을 바꾸면 할 일도 따라 바뀌어요."
+      hint="할 일을 묶는 큰 단위(예: 프로젝트 A, 프로젝트 B, 기타). 순서대로 업무 화면·사이드바·주간보고에 나와요. 이름을 바꾸면 할 일도 따라 바뀌어요. 세부 분류를 적으면(예: 기능개발, 오류, 유지보수) 그 카테고리 할 일을 분류별로 묶어 보여 주고, 주간보고 글도 분류별로 나눠 써요."
       dirty={dirty}
-      onSave={() => api.saveCategories(list.map((c) => ({ name: c.name.trim(), color: c.color, oldName: c.oldName ?? null })))}
+      onSave={() =>
+        api.saveCategories(
+          list.map((c) => ({ name: c.name.trim(), color: c.color, oldName: c.oldName ?? null, subtypes: splitList(c.subtypesText) })),
+        )
+      }
     >
       {list.map((c, i) => (
-        <div key={i} className="st-row">
-          <ColorSelect value={c.color} onChange={(v) => set(i, { color: v })} allowAuto />
-          <input className="st-input" value={c.name} placeholder="카테고리 이름" onChange={(e) => set(i, { name: e.target.value })} />
-          <button className="btn btn-ghost btn-sm icon-btn" onClick={() => move(i, -1)} disabled={i === 0} aria-label="위로">
-            ↑
-          </button>
-          <button className="btn btn-ghost btn-sm icon-btn" onClick={() => move(i, 1)} disabled={i === list.length - 1} aria-label="아래로">
-            ↓
-          </button>
-          <button className="btn btn-ghost btn-sm icon-btn" onClick={() => setList(list.filter((_, k) => k !== i))} aria-label="삭제">
-            <Icon name="x" size={13} />
-          </button>
+        <div key={i} className="st-cat">
+          <div className="st-row">
+            <ColorSelect value={c.color} onChange={(v) => set(i, { color: v })} allowAuto />
+            <input className="st-input" value={c.name} placeholder="카테고리 이름" onChange={(e) => set(i, { name: e.target.value })} />
+            <button className="btn btn-ghost btn-sm icon-btn" onClick={() => move(i, -1)} disabled={i === 0} aria-label="위로">
+              ↑
+            </button>
+            <button className="btn btn-ghost btn-sm icon-btn" onClick={() => move(i, 1)} disabled={i === list.length - 1} aria-label="아래로">
+              ↓
+            </button>
+            <button className="btn btn-ghost btn-sm icon-btn" onClick={() => setList(list.filter((_, k) => k !== i))} aria-label="삭제">
+              <Icon name="x" size={13} />
+            </button>
+          </div>
+          <input
+            className="st-input st-sub"
+            value={c.subtypesText}
+            placeholder="세부 분류 (쉼표로 · 비우면 없음) 예: 기능개발, 오류, 유지보수"
+            onChange={(e) => set(i, { subtypesText: e.target.value })}
+            aria-label={`${c.name || '카테고리'} 세부 분류`}
+          />
         </div>
       ))}
-      <button className="btn btn-sm" onClick={() => setList([...list, { name: '', color: null, oldName: null }])}>
-        + 카테고리 추가
-      </button>
+      <div className="actions">
+        <button className="btn btn-sm" onClick={() => setList([...list, { name: '', color: null, oldName: null, subtypes: [], subtypesText: '' }])}>
+          + 카테고리 추가
+        </button>
+        {hasSubtypes && <FillSubtypes />}
+      </div>
     </Section>
+  )
+}
+
+/** 세부 분류가 빈 할 일을 AI 로 채운다 — 저장된 세부 분류 기준 */
+function FillSubtypes() {
+  const running = useRunningJob('subtype:fill')
+  const last = useLastJob('subtype:fill')
+  const start = useStartJob(() => api.fillSubtypes())
+  return (
+    <span className="st-fill">
+      <button className="btn btn-sm" onClick={() => start.mutate(undefined)} disabled={!!running || start.isPending}>
+        <Icon name="sparkle" size={13} /> {running ? '채우는 중' : '빈 세부 분류 AI 로 채우기'}
+      </button>
+      {!running && last?.status === 'DONE' && <span className="subtle">{last.message}</span>}
+      {!running && last?.status === 'FAILED' && <span className="bad">{last.message}</span>}
+    </span>
   )
 }
 

@@ -47,6 +47,7 @@ public class ClassifyService {
     private final QueryStore queryStore;
     private final ClaudeCli claude;
     private final JobService jobs;
+    private final SubtypeService subtypes;
 
     /** 새로 생긴 미분류 작업이 있을 때만 이번 주를 분류한다 */
     @Scheduled(initialDelay = 600_000, fixedDelayString = "${worklog.classify-interval}")
@@ -65,7 +66,15 @@ public class ClassifyService {
         Period.of("week", weekKey);
         return jobs.submit("classify:" + weekKey, weekKey + " 업무 자동 분류", progress -> {
             int n = classify(weekKey, redo);
-            return n < 0 ? "이 주 계획 업무가 없어 건너뜀" : n + "건 분류";
+            // 세부 분류가 빈 이 주 할 일도 같이 채운다(실패해도 세션 분류 결과는 남긴다)
+            int filled = 0;
+            try {
+                filled = subtypes.fill(store.itemsInWeek(weekKey));
+            } catch (IOException | RuntimeException e) {
+                log.warn("{} 세부 분류 채우기 실패: {}", weekKey, e.getMessage());
+            }
+            String sub = filled > 0 ? " · 세부 분류 " + filled + "개" : "";
+            return (n < 0 ? "이 주 계획 업무가 없어 건너뜀" : n + "건 분류") + sub;
         });
     }
 

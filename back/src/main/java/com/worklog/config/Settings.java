@@ -8,8 +8,11 @@ public final class Settings {
     private Settings() {
     }
 
-    /** color = 라벨·막대 색 이름(gray·blue·green·yellow·red·purple·orange·teal·pink), null 이면 이름으로 자동 */
-    public record Category(String name, String color, String oldName) {
+    /**
+     * color = 라벨·막대 색 이름(gray·blue·green·yellow·red·purple·orange·teal·pink), null 이면 이름으로 자동.
+     * subtypes = 이 카테고리 할 일의 세부 분류(예: 기능개발·오류·유지보수), 비우면 없음
+     */
+    public record Category(String name, String color, String oldName, List<String> subtypes) {
     }
 
     /**

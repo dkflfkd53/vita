@@ -53,6 +53,8 @@ public class WorkTextService {
 
     private static final String I1 = "    ";
     private static final String I2 = "        ";
+    /** 세부 분류가 있는 카테고리에서 분류를 안 고른 할 일 */
+    static final String UNSORTED = "미분류";
     private static final Pattern GITMOJI = Pattern.compile("^\\S*\\s*(\\w+)(\\([^)]*\\))?!?:\\s*");
     /** 메모의 주 표시 — "10월 3주차"(목요일 기준, 화면 표기) 또는 ISO 주 번호 "42주" */
     private static final String WEEK_TAG = "(?:(\\d{1,2})월\\s*(\\d)주차|(\\d{1,2})주(?!차))";
@@ -185,19 +187,48 @@ public class WorkTextService {
 
     private String fullDraft(Board board) {
         StringBuilder sb = new StringBuilder("[업무 내용]\n\n");
+        Map<String, List<String>> subtypes = settings.subtypes();
         for (Map.Entry<String, List<ItemView>> g : groups(board).entrySet()) {
             if (g.getValue().isEmpty()) {
                 continue;
             }
             sb.append("- ").append(g.getKey()).append('\n');
-            for (ItemView i : g.getValue()) {
-                sb.append(I1).append("- ").append(i.title()).append('\n');
-                for (String b : memoBullets(i.memo(), board.key())) {
-                    sb.append(I2).append("- ").append(b).append('\n');
+            // 세부 분류가 있는 카테고리는 분류 줄을 한 단계 끼운다
+            for (Map.Entry<String, List<ItemView>> s : bySubtype(g.getValue(), subtypes.get(g.getKey())).entrySet()) {
+                String pad = s.getKey() == null ? "" : I1;
+                if (s.getKey() != null) {
+                    sb.append(I1).append("- ").append(s.getKey()).append('\n');
+                }
+                for (ItemView i : s.getValue()) {
+                    sb.append(pad).append(I1).append("- ").append(i.title()).append('\n');
+                    for (String b : memoBullets(i.memo(), board.key())) {
+                        sb.append(pad).append(I2).append("- ").append(b).append('\n');
+                    }
                 }
             }
         }
         return sb.toString().stripTrailing() + "\n";
+    }
+
+    /**
+     * 카테고리 안 할 일을 세부 분류 순서대로 묶는다. order 가 없으면(세부 분류 없는 카테고리) 키 null 하나에 전부.
+     * 분류가 빈 할 일은 맨 끝 "미분류"
+     */
+    static Map<String, List<ItemView>> bySubtype(List<ItemView> items, List<String> order) {
+        Map<String, List<ItemView>> m = new LinkedHashMap<>();
+        if (order == null || order.isEmpty()) {
+            m.put(null, items);
+            return m;
+        }
+        for (String s : order) {
+            m.put(s, new ArrayList<>());
+        }
+        for (ItemView i : items) {
+            String key = i.subtype() != null && order.contains(i.subtype()) ? i.subtype() : UNSORTED;
+            m.computeIfAbsent(key, k -> new ArrayList<>()).add(i);
+        }
+        m.values().removeIf(List::isEmpty);
+        return m;
     }
 
     /** 차주 계획 초안 — 전체 업무 내용과 같은 모양으로 카테고리별 할 일 이름(마감·보드 표시) */
@@ -217,8 +248,15 @@ public class WorkTextService {
             }
             any = true;
             sb.append("- ").append(g.getKey()).append('\n');
-            for (ItemView i : g.getValue()) {
-                sb.append(I1).append("- ").append(i.title()).append(i.dueDate() == null ? "" : " (~" + mmdd(i.dueDate()) + ")").append('\n');
+            for (Map.Entry<String, List<ItemView>> s : bySubtype(g.getValue(), settings.subtypes().get(g.getKey())).entrySet()) {
+                String pad = s.getKey() == null ? "" : I1;
+                if (s.getKey() != null) {
+                    sb.append(I1).append("- ").append(s.getKey()).append('\n');
+                }
+                for (ItemView i : s.getValue()) {
+                    sb.append(pad).append(I1).append("- ").append(i.title())
+                            .append(i.dueDate() == null ? "" : " (~" + mmdd(i.dueDate()) + ")").append('\n');
+                }
             }
         }
         return any ? sb.toString() : sb.append("- (다음 주 할 일 없음 — 업무 화면에서 다음 주 할 일을 넣거나 이번 주 할 일 상태를 확인하세요)\n").toString();
@@ -304,7 +342,8 @@ public class WorkTextService {
         if (words.isEmpty()) {
             return true;
         }
-        String hay = (i.title() + "\n" + (i.memo() == null ? "" : i.memo())).toLowerCase(Locale.ROOT);
+        String hay = (i.title() + "\n" + (i.subtype() == null ? "" : i.subtype()) + "\n" + (i.memo() == null ? "" : i.memo()))
+                .toLowerCase(Locale.ROOT);
         return words.stream().anyMatch(w -> hay.contains(w.toLowerCase(Locale.ROOT)));
     }
 
@@ -395,12 +434,20 @@ public class WorkTextService {
         Board board = work.board(weekKey);
         List<Part> itemParts = parts().stream().filter(pt -> !pt.full() && "items".equals(pt.def().source())).toList();
         StringBuilder in = new StringBuilder();
-        in.append("기간: ").append(p.label()).append("\n\n[이번 주 할 일]\n");
+        in.append("기간: ").append(p.label()).append("\n\n");
+        Map<String, List<String>> subtypes = settings.subtypes();
+        if (!subtypes.isEmpty()) {
+            in.append("[세부 분류] (이 카테고리는 카테고리 아래를 분류로 한 번 더 나눈다)\n");
+            subtypes.forEach((c, list) -> in.append("- ").append(c).append(": ").append(String.join(" / ", list)).append('\n'));
+            in.append('\n');
+        }
+        in.append("[이번 주 할 일]\n");
         for (Map.Entry<String, List<ItemView>> g : groups(board).entrySet()) {
             for (ItemView i : g.getValue()) {
                 List<String> tags = itemParts.stream().filter(pt -> matches(pt, i)).map(Part::title).toList();
                 in.append("- [").append(g.getKey()).append("] ").append(i.title())
                         .append(tags.isEmpty() ? "" : " (" + String.join(", ", tags) + " 해당)")
+                        .append(subtypeTag(i, subtypes))
                         .append(" | 상태 ").append(statusKo(i.status()))
                         .append(" | 이번 주 작업 ").append(ReportService.hours(i.activeSec())).append("시간\n");
                 if (i.memo() != null && !i.memo().isBlank()) {
@@ -425,6 +472,7 @@ public class WorkTextService {
                 List<String> tags = parts().stream().filter(pt -> pt.next() && matches(pt, i)).map(Part::title).toList();
                 in.append("- [").append(i.category() == null ? "기타" : i.category()).append("] ").append(i.title())
                         .append(tags.isEmpty() ? "" : " (" + String.join(", ", tags) + " 해당)")
+                        .append(subtypeTag(i, subtypes))
                         .append(" | 상태 ").append(statusKo(i.status()))
                         .append(" | 마감 ").append(i.dueDate() == null ? "-" : i.dueDate())
                         .append(i.planned() && board.items().stream().noneMatch(b -> b.id() == i.id()) ? " | 다음 주 보드에 넣음" : "")
@@ -492,6 +540,9 @@ public class WorkTextService {
                 - 구어 표현은 업무 용어로 바꾼다(예: "느린 거 고침" → "조회 성능 개선")
                 - 원인·결과·수치(시간, 건수, 진행률)는 살린다. 이번 주에 한 일만 쓴다(메모의 다른 주 내용은 쓰지 않는다).
                   단 차주 계획 갈래는 다음 주에 할 일만 쓴다(~ 예정, ~ 진행 등 계획 표현)
+                - 입력에 [세부 분류]가 있으면(이 규칙이 갈래 지시·예시보다 우선): 그 카테고리는 카테고리 줄 아래에 분류 줄 "- 분류명"을
+                  한 단계 끼우고, 그 아래 업무·세부를 한 단계씩 더 들여쓴다(공백 4칸 단위). 분류는 [세부 분류] 순서, 업무의 분류는 입력의
+                  "분류 …" 표시 그대로, 표시가 없으면 "미분류". 해당 업무가 없는 분류 줄은 뺀다
                 쓸 것:%s
                 출력은 글만. 설명·코드펜스 없이.%s
 
@@ -561,6 +612,13 @@ public class WorkTextService {
     private static String shortPath(String path, String repo) {
         int idx = path.lastIndexOf("/" + repo + "/");
         return idx >= 0 ? path.substring(idx + repo.length() + 2) : path;
+    }
+
+    private static String subtypeTag(ItemView i, Map<String, List<String>> subtypes) {
+        if (i.category() == null || !subtypes.containsKey(i.category())) {
+            return "";
+        }
+        return " | 분류 " + (i.subtype() == null ? UNSORTED : i.subtype());
     }
 
     private static String statusKo(String s) {

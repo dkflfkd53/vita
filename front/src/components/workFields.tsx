@@ -101,6 +101,20 @@ export function CategorySelect({ value, categories, onSave }: { value: string | 
 }
 
 /** 포커스를 잃거나 Enter 일 때 저장, Esc 는 되돌림 */
+/** 세부 분류 — 카테고리에 세부 분류가 있을 때만 쓴다 */
+export function SubtypeSelect({ value, subtypes, onSave }: { value: string | null; subtypes: string[]; onSave: Save }) {
+  return (
+    <select className="cell-select" value={value ?? ''} onChange={(e) => onSave({ subtype: e.target.value })}>
+      <option value="">미분류</option>
+      {subtypes.map((s) => (
+        <option key={s} value={s}>
+          {s}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 export function TextCell({
   value,
   placeholder,

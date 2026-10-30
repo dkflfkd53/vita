@@ -23,7 +23,7 @@ import lombok.RequiredArgsConstructor;
 public class WorkStore {
 
     private static final String ITEM_COLUMNS =
-            "id, title, category, priority, status, due_date, requester, progress, created_at, updated_at, done_at, memo";
+            "id, title, category, priority, status, due_date, requester, progress, created_at, updated_at, done_at, memo, subtype";
 
     private final JdbcClient jdbc;
 
@@ -41,10 +41,11 @@ public class WorkStore {
         KeyHolder keys = new GeneratedKeyHolder();
         jdbc.sql("""
                 INSERT INTO work_item (title, category, priority, status, due_date, requester, progress,
-                                       created_at, updated_at, done_at, memo)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                       created_at, updated_at, done_at, memo, subtype)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """).params(draft.title(), draft.category(), draft.priority(), draft.status(), draft.dueDate(),
-                draft.requester(), draft.progress(), now, now, "DONE".equals(draft.status()) ? now : null, draft.memo())
+                draft.requester(), draft.progress(), now, now, "DONE".equals(draft.status()) ? now : null, draft.memo(),
+                draft.subtype())
                 .update(keys);
         return keys.getKey().longValue();
     }
@@ -68,6 +69,11 @@ public class WorkStore {
         sql.append(" WHERE id = ?");
         params.add(id);
         return jdbc.sql(sql.toString()).params(params).update();
+    }
+
+    /** AI 가 채운 세부 분류 — 사용자가 고친 시각(updated_at)은 건드리지 않는다 */
+    public void setSubtype(long id, String subtype) {
+        jdbc.sql("UPDATE work_item SET subtype = ? WHERE id = ?").params(subtype, id).update();
     }
 
     @Transactional
@@ -205,7 +211,7 @@ public class WorkStore {
     private static WorkItem mapItem(ResultSet rs, int i) throws SQLException {
         return new WorkItem(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5),
                 rs.getString(6), rs.getString(7), rs.getInt(8), rs.getString(9), rs.getString(10), rs.getString(11),
-                rs.getString(12));
+                rs.getString(12), rs.getString(13));
     }
 
     private static Link mapLink(ResultSet rs, int i) throws SQLException {
@@ -216,7 +222,7 @@ public class WorkStore {
 
     public record WorkItem(long id, String title, String category, String priority, String status, String dueDate,
                            String requester, int progress, String createdAt, String updatedAt, String doneAt,
-                           String memo) {
+                           String memo, String subtype) {
     }
 
     public record Link(String sessionId, String day, Long workItemId, String source) {

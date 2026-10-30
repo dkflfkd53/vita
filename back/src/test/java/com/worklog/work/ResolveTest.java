@@ -14,7 +14,7 @@ import com.worklog.work.WorkStore.Link;
 /** 작업 묶음 단위 연결 — 이어진 세션의 고정 공유, 끈 세션 마무리 요청의 이어받기 */
 class ResolveTest {
 
-    private final WorkService service = new WorkService(null, null, null, null, null, null, null, null);
+    private final WorkService service = new WorkService(null, null, null, null, null, null, null, null, null);
 
     private static SessionDayRef ref(String sid, String day, String task) {
         return new SessionDayRef(sid, day, "제목", "앱", task, 60, 1, 0, null, day + "T01:00:00Z", day + "T02:00:00Z", 0);

@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { Fragment, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { useBoard, useRunningJob, useStartJob, useUpdateItem, useWorkMutation } from '../api/hooks'
+import { useBoard, useRunningJob, useSettings, useStartJob, useUpdateItem, useWorkMutation } from '../api/hooks'
 import { api } from '../api/client'
 import type { Board, BoardKind, UnassignedSession, WorkItem, WorkItemPatch, WorkPriority, WorkStatus } from '../api/types'
 import { Icon } from '../components/Icon'
 import { ErrorBox, Loading, ProjectLabel } from '../components/common'
 import { UsageButton } from '../components/UsageBreakdown'
-import { CategorySelect, DueDateInput, MemoEditor, PRIORITY, PrioritySelect, STATUS, StatusIcon, TextCell, dDay } from '../components/workFields'
+import { CategorySelect, DueDateInput, MemoEditor, PRIORITY, PrioritySelect, STATUS, StatusIcon, SubtypeSelect, TextCell, dDay } from '../components/workFields'
 import { MonthOverview } from '../components/MonthOverview'
 import { WorkTextDialog } from '../components/WorkTextDialog'
 import { addDays, fmtShort, fmtUsd, monthKey, monthWeek, parseYmd, tint, weekKey, weekLabel, weekday, ymd } from '../lib/format'
@@ -262,7 +262,22 @@ function Carryover({ board }: { board: Board }) {
 
 // ───────── 할 일 목록 ─────────
 
+/** 세부 분류가 있는 카테고리 안을 분류 순서대로 묶는다. 분류가 빈 할 일은 맨 끝 "미분류" */
+function bySubtype(items: WorkItem[], subtypes: string[]): [string, WorkItem[]][] {
+  const m = new Map<string, WorkItem[]>(subtypes.map((s) => [s, []]))
+  for (const i of items) {
+    const key = i.subtype && m.has(i.subtype) ? i.subtype : UNSORTED
+    if (!m.has(key)) m.set(key, [])
+    m.get(key)!.push(i)
+  }
+  return [...m.entries()].filter(([, list]) => list.length > 0)
+}
+
+const UNSORTED = '미분류'
+
 function TodoGroups({ board, openId, setOpenId }: { board: Board; openId: number | null; setOpenId: (id: number | null) => void }) {
+  const { data: settings } = useSettings()
+  const subtypesOf = (category: string | null) => settings?.categories.find((c) => c.name === category)?.subtypes ?? []
   const groups = new Map<string, WorkItem[]>()
   for (const c of board.categories) groups.set(c, [])
   for (const item of board.items) {
@@ -290,16 +305,32 @@ function TodoGroups({ board, openId, setOpenId }: { board: Board; openId: number
               )}
             </h3>
             <div className="t-list">
-              {items.map((item) => (
-                <TodoItem
-                  key={item.id}
-                  item={item}
-                  board={board}
-                  open={openId === item.id}
-                  onOpen={() => setOpenId(item.id)}
-                  onClose={() => setOpenId(null)}
-                />
-              ))}
+              {(subtypesOf(category).length > 0 ? bySubtype(items, subtypesOf(category)) : [[null, items] as [string | null, WorkItem[]]]).map(
+                ([subtype, list]) => (
+                  <Fragment key={subtype ?? ''}>
+                    {subtype && (
+                      <div className={`t-subhead${subtype === UNSORTED ? ' unsorted' : ''}`}>
+                        {subtype}
+                        <span className="count">
+                          {list.length}
+                          {list.some((i) => i.activeSec > 0) && ` · ${fmtShort(list.reduce((t, i) => t + i.activeSec, 0))}`}
+                        </span>
+                      </div>
+                    )}
+                    {list.map((item) => (
+                      <TodoItem
+                        key={item.id}
+                        item={item}
+                        board={board}
+                        subtypes={subtypesOf(item.category)}
+                        open={openId === item.id}
+                        onOpen={() => setOpenId(item.id)}
+                        onClose={() => setOpenId(null)}
+                      />
+                    ))}
+                  </Fragment>
+                ),
+              )}
               <AddTodo category={category === NO_CATEGORY ? null : category} week={board.weekKey} showWeek={board.kind === 'month'} />
             </div>
           </section>
@@ -309,7 +340,21 @@ function TodoGroups({ board, openId, setOpenId }: { board: Board; openId: number
   )
 }
 
-function TodoItem({ item, board, open, onOpen, onClose }: { item: WorkItem; board: Board; open: boolean; onOpen: () => void; onClose: () => void }) {
+function TodoItem({
+  item,
+  board,
+  subtypes,
+  open,
+  onOpen,
+  onClose,
+}: {
+  item: WorkItem
+  board: Board
+  subtypes: string[]
+  open: boolean
+  onOpen: () => void
+  onClose: () => void
+}) {
   const update = useUpdateItem()
   const save = (patch: WorkItemPatch) => update.mutate({ id: item.id, patch })
   const ref = useRef<HTMLDivElement>(null)
@@ -348,6 +393,12 @@ function TodoItem({ item, board, open, onOpen, onClose }: { item: WorkItem; boar
                 <span>카테고리</span>
                 <CategorySelect value={item.category} categories={board.categories} onSave={save} />
               </label>
+              {subtypes.length > 0 && (
+                <label className="t-prop">
+                  <span>분류</span>
+                  <SubtypeSelect value={item.subtype} subtypes={subtypes} onSave={save} />
+                </label>
+              )}
               <div className="t-prop">
                 <span>마감</span>
                 <DueDateInput value={item.dueDate} status={item.status} onSave={save} />

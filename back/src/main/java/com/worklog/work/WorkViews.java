@@ -14,7 +14,8 @@ public final class WorkViews {
     }
 
     /** planned = 이 주 계획에 들어 있음. false 면 계획엔 없는데 이 주에 연결된 작업이 있는 업무 */
-    public record ItemView(long id, String title, String category, String priority, String status, String dueDate,
+    /** subtype = 카테고리 안의 세부 분류(설정의 카테고리 세부 분류 중 하나), 없으면 null */
+    public record ItemView(long id, String title, String category, String subtype, String priority, String status, String dueDate,
                            String createdAt, String updatedAt, String doneAt,
                            String memo, boolean planned, long activeSec, List<LinkedDay> sessionDays, double costUsd,
                            List<ItemSession> sessions, List<String> weeks) {
@@ -66,8 +67,9 @@ public final class WorkViews {
                            String lastLinkedDay, int itemCount, boolean routine) {
     }
 
+    /** subtype: null = 그대로, "" = 비움 */
     public record WorkItemRequest(String title, String category, String priority, String status, String dueDate,
-                                  String memo, String weekKey) {
+                                  String memo, String weekKey, String subtype) {
     }
 
     /** days 의 연결을 사용자가 정한다. workItemId null = 계획 외로 확정. pin = 앞으로도 이 세션은 이 업무 */

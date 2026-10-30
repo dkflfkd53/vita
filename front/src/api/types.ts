@@ -309,6 +309,8 @@ export interface WorkItem {
   id: number
   title: string
   category: string | null
+  /** 카테고리 안의 세부 분류(설정 › 카테고리 › 세부 분류 중 하나) */
+  subtype: string | null
   priority: WorkPriority
   status: WorkStatus
   dueDate: string | null
@@ -419,6 +421,8 @@ export interface WorkItemPatch {
   dueDate?: string
   memo?: string
   weekKey?: string
+  /** '' = 비움 */
+  subtype?: string
 }
 
 // ───────── 주간 업무 내용 (report.WorkTextService) ─────────
@@ -571,6 +575,8 @@ export interface SettingCategory {
   color: string | null
   /** 이름을 바꿀 때만 — 예전 이름 */
   oldName?: string | null
+  /** 이 카테고리 할 일의 세부 분류(예: 기능개발·오류·유지보수), 비우면 없음 */
+  subtypes: string[]
 }
 
 /** repo = 폴더 경로(~/work/회사A — 그 아래 전부) 또는 저장소 폴더 이름 */

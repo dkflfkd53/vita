@@ -83,6 +83,7 @@ export const api = {
   backupNow: () => request<{ local: string; mirrored: string | null; size: number }>('/backups', { method: 'POST' }),
 
   board: (kind: BoardKind, key: string) => request<Board>(`/${kind === 'week' ? 'weeks' : 'months'}/${key}/board`),
+  fillSubtypes: () => request<JobView>('/work-items/subtypes/fill', { method: 'POST' }),
   classify: (week: string) => request<JobView>(`/weeks/${week}/classify?redo=true`, { method: 'POST' }),
   planItem: (week: string, id: number) => request<void>(`/weeks/${week}/items/${id}`, { method: 'POST' }),
   unplanItem: (week: string, id: number) => request<void>(`/weeks/${week}/items/${id}`, { method: 'DELETE' }),

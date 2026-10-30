@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.worklog.config.ProjectScope;
 import com.worklog.config.RoutineSessions;
+import com.worklog.config.SettingsService;
 import com.worklog.config.WorklogProperties;
 import com.worklog.live.LiveSessionService;
 import com.worklog.live.LiveSessionService.LiveSession;
@@ -78,6 +79,7 @@ public class WorkService {
     private final TaskCatalog catalog;
     private final ProjectScope scope;
     private final RoutineSessions routines;
+    private final SettingsService settings;
 
     // ───────── 보드 ─────────
 
@@ -262,11 +264,12 @@ public class WorkService {
             throw new IllegalArgumentException("업무명을 입력하세요");
         }
         String status = req.status() == null ? "PLANNED" : check(req.status(), STATUSES, "상태");
-        WorkItem draft = new WorkItem(0, req.title().strip(), blankToNull(req.category()),
+        String category = blankToNull(req.category());
+        WorkItem draft = new WorkItem(0, req.title().strip(), category,
                 req.priority() == null ? "MEDIUM" : check(req.priority(), PRIORITIES, "우선순위"),
                 status, date(req.dueDate()), null,
                 0,
-                null, null, null, memo(req.memo()));
+                null, null, null, memo(req.memo()), subtype(category, req.subtype()));
         long id = store.createItem(draft);
         if (draft.category() != null) {
             store.addCategory(draft.category());
@@ -295,6 +298,13 @@ public class WorkService {
                 store.addCategory(req.category().strip());
             }
         }
+        String category = req.category() != null ? blankToNull(req.category()) : current.category();
+        if (req.subtype() != null) {
+            cols.put("subtype", subtype(category, req.subtype()));
+        } else if (req.category() != null && current.subtype() != null
+                && !settings.subtypes().getOrDefault(category, List.of()).contains(current.subtype())) {
+            cols.put("subtype", null); // 카테고리를 바꿔 맞지 않게 된 세부 분류
+        }
         if (req.priority() != null) {
             cols.put("priority", check(req.priority(), PRIORITIES, "우선순위"));
         }
@@ -318,6 +328,18 @@ public class WorkService {
 
     public void delete(long id) {
         store.deleteItem(id);
+    }
+
+    /** 세부 분류 — 비우면 null, 그 카테고리의 목록에 없으면 오류 */
+    private String subtype(String category, String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        List<String> allowed = category == null ? List.of() : settings.subtypes().getOrDefault(category, List.of());
+        if (!allowed.contains(value.strip())) {
+            throw new IllegalArgumentException("'" + (category == null ? "카테고리 없음" : category) + "' 에 없는 세부 분류: " + value);
+        }
+        return value.strip();
     }
 
     public void plan(String weekKey, long id) {
@@ -372,7 +394,7 @@ public class WorkService {
         var session = queryStore.session(req.sessionId())
                 .orElseThrow(() -> new IllegalArgumentException("세션이 없음"));
         long id = create(new WorkItemRequest(session.displayTitle(), guessCategory(session.project()), "MEDIUM",
-                "IN_PROGRESS", null, null, req.weekKey()));
+                "IN_PROGRESS", null, null, req.weekKey(), null));
         if (req.days() != null && !req.days().isEmpty()) {
             link(new LinkRequest(req.sessionId(), req.days(), id, false));
         }
@@ -501,7 +523,7 @@ public class WorkService {
 
     /** ctx 가 null 이면(리포트·이월 후보) 세션 묶음은 비워 둔다 */
     private static ItemView view(WorkItem w, boolean planned, List<LinkedDay> days, Ctx ctx, List<String> weeks) {
-        return new ItemView(w.id(), w.title(), w.category(), w.priority(), w.status(), w.dueDate(),
+        return new ItemView(w.id(), w.title(), w.category(), w.subtype(), w.priority(), w.status(), w.dueDate(),
                 w.createdAt(), w.updatedAt(), w.doneAt(), w.memo(), planned,
                 days.stream().mapToLong(LinkedDay::activeSec).sum(), days,
                 days.stream().mapToDouble(LinkedDay::costUsd).sum(),

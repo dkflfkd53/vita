@@ -22,6 +22,9 @@ public class SchemaUpgrades {
     void upgrade() {
         addColumn("work_item", "memo", "TEXT");
         addColumn("category", "color", "TEXT");
+        // 카테고리 안의 세부 분류(JSON 배열, 예: ["기능개발","오류"]) · 할 일의 세부 분류
+        addColumn("category", "subtypes", "TEXT");
+        addColumn("work_item", "subtype", "TEXT");
         // claude | codex — 비어 있으면 claude(예전 기록)
         addColumn("session", "source", "TEXT");
         // 작업 폴더의 저장소 루트(worktree 면 원래 저장소) — 폴더 규칙을 원래 위치로 맞춘다
