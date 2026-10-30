@@ -19,7 +19,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 할 일의 세부 분류(설정의 카테고리 세부 분류, 예: MES = 기능개발·오류·유지보수…)를 AI 로 채운다.
+ * 할 일의 세부 분류(설정의 카테고리 세부 분류, 예: 프로젝트 A = 기능개발·오류·유지보수…)를 AI 로 채운다.
  * 비어 있는 것만 채우고, 사용자가 고른 분류는 건드리지 않는다. 근거 = 할 일 이름·메모
  */
 @Slf4j
