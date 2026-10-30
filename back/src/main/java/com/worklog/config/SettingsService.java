@@ -223,7 +223,7 @@ public class SettingsService {
             if (p.title() == null || p.title().isBlank()) {
                 throw new IllegalArgumentException("갈래 이름을 적으세요");
             }
-            String source = "commits".equals(p.source()) ? "commits" : "items";
+            String source = "commits".equals(p.source()) || "next".equals(p.source()) ? p.source() : "items";
             parts.add(new WorkTextPart(id, p.title().strip(), source, nonNull(p.categories()), nonNull(p.keywords()),
                     nonNull(p.repos()), p.maxLines() == null || p.maxLines() < 1 ? 3 : Math.min(p.maxLines(), 12),
                     blankToNull(p.guide()), blankToNull(p.example())));

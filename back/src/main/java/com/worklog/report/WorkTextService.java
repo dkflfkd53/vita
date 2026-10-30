@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -39,7 +40,8 @@ import lombok.extern.slf4j.Slf4j;
  * 주간 업무 내용 — 사내 주간보고에 붙이는 글을 갈래별로 따로 만든다. 갈래는 설정에서 정한다.
  * <ul>
  *   <li>full(늘 있음): 이번 주 한 일 전체 — 카테고리별 할 일과 세부</li>
- *   <li>사용자 갈래: items(할 일을 카테고리·키워드로 거름) 또는 commits(저장소 커밋) 기준의 짧은 요약</li>
+ *   <li>사용자 갈래: items(할 일을 카테고리·키워드로 거름) 또는 commits(저장소 커밋) 기준의 짧은 요약,
+ *       next(차주 계획 — 다음 주 보드의 할 일 + 이번 주에 못 끝낸 할 일 + 다음 주 마감)</li>
  * </ul>
  * 초안은 할 일·메모·커밋으로 바로 만들고, AI 는 갈래의 지시(guide)·문체 예시(example)대로 다시 쓴다. 사용자가 고친 글
  * (model=manual)은 그대로 두고 다음 주 AI 작성의 문체 예시로 쓴다. 저장 = report(kind=worktext | worktext-갈래id, period_key=주 키)
@@ -87,6 +89,10 @@ public class WorkTextService {
 
         boolean full() {
             return "full".equals(def.id());
+        }
+
+        boolean next() {
+            return "next".equals(def.source());
         }
 
         String mark() {
@@ -171,6 +177,9 @@ public class WorkTextService {
         if (part.full()) {
             return fullDraft(board);
         }
+        if (part.next()) {
+            return nextDraft(part, board);
+        }
         return "commits".equals(part.def().source()) ? commitDraft(part, p) : itemDraft(part, board);
     }
 
@@ -189,6 +198,61 @@ public class WorkTextService {
             }
         }
         return sb.toString().stripTrailing() + "\n";
+    }
+
+    /** 차주 계획 초안 — 전체 업무 내용과 같은 모양으로 카테고리별 할 일 이름(마감·보드 표시) */
+    private String nextDraft(Part part, Board board) {
+        Map<String, List<ItemView>> groups = new LinkedHashMap<>();
+        board.categories().forEach(c -> groups.put(c, new ArrayList<>()));
+        for (ItemView i : nextItems(board)) {
+            if (matches(part, i)) {
+                groups.computeIfAbsent(i.category() == null ? "기타" : i.category(), k -> new ArrayList<>()).add(i);
+            }
+        }
+        StringBuilder sb = new StringBuilder("[" + part.title() + "]\n\n");
+        boolean any = false;
+        for (Map.Entry<String, List<ItemView>> g : groups.entrySet()) {
+            if (g.getValue().isEmpty()) {
+                continue;
+            }
+            any = true;
+            sb.append("- ").append(g.getKey()).append('\n');
+            for (ItemView i : g.getValue()) {
+                sb.append(I1).append("- ").append(i.title()).append(i.dueDate() == null ? "" : " (~" + mmdd(i.dueDate()) + ")").append('\n');
+            }
+        }
+        return any ? sb.toString() : sb.append("- (다음 주 할 일 없음 — 업무 화면에서 다음 주 할 일을 넣거나 이번 주 할 일 상태를 확인하세요)\n").toString();
+    }
+
+    /**
+     * 차주 계획 후보 — 다음 주 보드에 넣은 할 일, 이번 주 할 일 중 완료·보류가 아닌 것(이번 주에 계획했거나 작업한 것),
+     * 마감이 다음 주인 할 일. 카테고리 순
+     */
+    List<ItemView> nextItems(Board board) {
+        LocalDate nextFrom = LocalDate.parse(board.from()).plusDays(7);
+        Board next = work.board(Period.weekKey(nextFrom));
+        Map<Long, ItemView> out = new LinkedHashMap<>();
+        next.items().stream().filter(i -> i.planned() && !"DONE".equals(i.status())).forEach(i -> out.put(i.id(), i));
+        for (ItemView i : board.items()) {
+            boolean open = !"DONE".equals(i.status()) && !"ON_HOLD".equals(i.status());
+            boolean dueNext = i.dueDate() != null && !LocalDate.parse(i.dueDate()).isBefore(nextFrom)
+                    && !LocalDate.parse(i.dueDate()).isAfter(nextFrom.plusDays(6));
+            if (open && (i.planned() || i.activeSec() > 0 || dueNext)) {
+                out.putIfAbsent(i.id(), i);
+            }
+        }
+        List<String> order = board.categories();
+        return out.values().stream()
+                .sorted(Comparator.comparingInt((ItemView i) -> {
+                    int k = order.indexOf(i.category());
+                    return k < 0 ? order.size() : k;
+                }))
+                .toList();
+    }
+
+    private static String mmdd(String date) {
+        LocalDate d = LocalDate.parse(date);
+        return d.getMonthValue() + "/" + d.getDayOfMonth();
     }
 
     /** 할 일 기준 갈래 — 걸러진 할 일의 이번 주 메모 줄(없으면 할 일 이름) */
@@ -329,7 +393,7 @@ public class WorkTextService {
     String input(String weekKey) {
         Period p = Period.of("week", weekKey);
         Board board = work.board(weekKey);
-        List<Part> itemParts = parts().stream().filter(pt -> !pt.full() && !"commits".equals(pt.def().source())).toList();
+        List<Part> itemParts = parts().stream().filter(pt -> !pt.full() && "items".equals(pt.def().source())).toList();
         StringBuilder in = new StringBuilder();
         in.append("기간: ").append(p.label()).append("\n\n[이번 주 할 일]\n");
         for (Map.Entry<String, List<ItemView>> g : groups(board).entrySet()) {
@@ -349,6 +413,30 @@ public class WorkTextService {
                     in.append("  이번 주 작업 기록(세션 요약):\n");
                     sums.forEach(s -> in.append("    - ").append(s).append('\n'));
                 }
+            }
+        }
+        if (parts().stream().anyMatch(Part::next)) {
+            in.append("\n[차주 계획 후보] (다음 주 보드에 넣은 할 일 · 이번 주에 못 끝낸 할 일 · 다음 주 마감)\n");
+            List<ItemView> next = nextItems(board);
+            if (next.isEmpty()) {
+                in.append("(없음)\n");
+            }
+            for (ItemView i : next) {
+                List<String> tags = parts().stream().filter(pt -> pt.next() && matches(pt, i)).map(Part::title).toList();
+                in.append("- [").append(i.category() == null ? "기타" : i.category()).append("] ").append(i.title())
+                        .append(tags.isEmpty() ? "" : " (" + String.join(", ", tags) + " 해당)")
+                        .append(" | 상태 ").append(statusKo(i.status()))
+                        .append(" | 마감 ").append(i.dueDate() == null ? "-" : i.dueDate())
+                        .append(i.planned() && board.items().stream().noneMatch(b -> b.id() == i.id()) ? " | 다음 주 보드에 넣음" : "")
+                        .append('\n');
+                if (i.memo() != null && !i.memo().isBlank()) {
+                    in.append("  메모:\n");
+                    i.memo().lines().forEach(l -> in.append("    ").append(l).append('\n'));
+                }
+                List<String> recent = i.sessionDays().stream().filter(d -> d.summary() != null)
+                        .map(d -> d.day().substring(5) + " " + d.summary()).toList();
+                recent.stream().skip(Math.max(0, recent.size() - 3))
+                        .forEach(s -> in.append("  최근 작업: ").append(s).append('\n'));
             }
         }
         in.append("\n[코드 변경]\n");
@@ -402,7 +490,8 @@ public class WorkTextService {
                 문체(모든 글 공통):
                 - 보고서체 명사형 종결(~ 추가 및 배포, ~ 분석 및 개선안 도출, ~ 작성, ~ 예정). "~함/~했다/~요" 금지
                 - 구어 표현은 업무 용어로 바꾼다(예: "느린 거 고침" → "조회 성능 개선")
-                - 원인·결과·수치(시간, 건수, 진행률)는 살린다. 이번 주에 한 일만 쓴다(메모의 다른 주 내용은 쓰지 않는다)
+                - 원인·결과·수치(시간, 건수, 진행률)는 살린다. 이번 주에 한 일만 쓴다(메모의 다른 주 내용은 쓰지 않는다).
+                  단 차주 계획 갈래는 다음 주에 할 일만 쓴다(~ 예정, ~ 진행 등 계획 표현)
                 쓸 것:%s
                 출력은 글만. 설명·코드펜스 없이.%s
 
@@ -418,6 +507,11 @@ public class WorkTextService {
     private String guide(Part part) {
         if (part.def().guide() != null) {
             return part.def().guide();
+        }
+        if (part.next()) {
+            return "입력의 [차주 계획 후보] 중 \"(" + part.title() + " 해당)\" 표시가 있는 것으로 다음 주에 할 일. 첫 줄 \"[" + part.title()
+                    + "]\", 빈 줄, 그다음 카테고리마다 \"- 카테고리\"(4칸 들여쓰기 업무 \"- 업무명 (마감 M/D 또는 진행률)\", 8칸 세부 0~2줄). "
+                    + "세부는 메모·최근 작업에서 아직 남은 일, 이어서 할 일만 \"~ 예정\" 체로. 근거가 없으면 세부 없이 업무명만. 완료된 일·이번 주 실적은 쓰지 않는다";
         }
         if ("commits".equals(part.def().source())) {
             String repos = part.def().repos().isEmpty() ? "관리하는 저장소" : String.join(", ", part.def().repos());
@@ -456,8 +550,9 @@ public class WorkTextService {
         if (t.startsWith("```")) {
             t = t.replaceFirst("^```\\w*\\n", "").replaceFirst("\\n```$", "");
         }
-        if (part.full()) {
-            int i = t.indexOf("[업무 내용]");
+        if (part.full() || part.next()) {
+            // 머리 줄 앞에 붙는 "기간: …" 같은 군더더기는 뺀다
+            int i = t.indexOf(part.full() ? "[업무 내용]" : "[" + part.title() + "]");
             t = i > 0 ? t.substring(i) : t;
         }
         return t.stripTrailing() + "\n";

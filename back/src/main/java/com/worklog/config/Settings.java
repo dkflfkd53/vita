@@ -26,6 +26,7 @@ public final class Settings {
     /**
      * 주간보고 글 갈래. 전체(full)는 늘 있고, 나머지는 사용자가 만든 요약 갈래.
      * source = items(할 일 기준: categories·keywords 로 거름) | commits(repos 의 커밋 기준)
+     *        | next(차주 계획: 다음 주 보드에 넣은 할 일 + 이번 주에 못 끝낸 할 일 + 다음 주 마감, categories·keywords 로 거름)
      * guide = AI 에게 줄 형식 지시, example = 문체 예시
      */
     public record WorkTextPart(String id, String title, String source, List<String> categories, List<String> keywords,

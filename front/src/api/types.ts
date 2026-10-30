@@ -588,7 +588,8 @@ export interface RoutineRule {
 export interface WorkTextPartDef {
   id: string
   title: string
-  source: 'items' | 'commits'
+  /** items = 할 일 기준, commits = 커밋 기준, next = 차주 계획(다음 주 보드 + 못 끝낸 할 일 + 다음 주 마감) */
+  source: 'items' | 'commits' | 'next'
   categories: string[]
   keywords: string[]
   repos: string[]

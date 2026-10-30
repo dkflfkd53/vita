@@ -335,21 +335,20 @@ function WorkTextParts({ data }: { data: SettingsAll }) {
   const [cfg, setCfg, dirty] = useDraft<WorkTextConfig>(data.workText)
   const setPart = (i: number, patch: Partial<WorkTextPartDef>) =>
     setCfg({ ...cfg, parts: cfg.parts.map((p, k) => (k === i ? { ...p, ...patch } : p)) })
-  const addPart = () => {
+  const addPart = (source: WorkTextPartDef['source'] = 'items') => {
     let n = cfg.parts.length + 1
     while (cfg.parts.some((p) => p.id === `part-${n}`)) n++
+    const id = source === 'next' && !cfg.parts.some((p) => p.id === 'next') ? 'next' : `part-${n}`
+    const title = source === 'next' ? '차주 계획' : '새 요약'
     setCfg({
       ...cfg,
-      parts: [
-        ...cfg.parts,
-        { id: `part-${n}`, title: '새 요약', source: 'items', categories: [], keywords: [], repos: [], maxLines: 3, guide: null, example: null },
-      ],
+      parts: [...cfg.parts, { id, title, source, categories: [], keywords: [], repos: [], maxLines: source === 'next' ? 12 : 3, guide: null, example: null }],
     })
   }
   return (
     <Section
       title="주간보고 갈래"
-      hint="리포트 화면의 '주간보고 글' 탭. '전체 업무 내용'은 늘 있고, 특정 프로젝트·저장소만 짧게 뽑는 요약 갈래를 더할 수 있어요. 지시와 문체 예시대로 AI 가 써요."
+      hint="리포트 화면의 '주간보고 글' 탭. '전체 업무 내용'은 늘 있고, 특정 프로젝트·저장소만 짧게 뽑는 요약 갈래나 차주 계획(다음 주 보드에 넣은 할 일 + 이번 주에 못 끝낸 할 일 + 다음 주 마감)을 더할 수 있어요. 지시와 문체 예시대로 AI 가 써요."
       dirty={dirty}
       onSave={() => api.saveWorkTextConfig(cfg)}
     >
@@ -380,17 +379,20 @@ function WorkTextParts({ data }: { data: SettingsAll }) {
           <div className="st-grid">
             <label className="st-field">
               무엇으로
-              <select value={p.source} onChange={(e) => setPart(i, { source: e.target.value as 'items' | 'commits' })}>
-                <option value="items">할 일 (카테고리·키워드로 거름)</option>
+              <select value={p.source} onChange={(e) => setPart(i, { source: e.target.value as WorkTextPartDef['source'] })}>
+                <option value="items">이번 주 할 일 (카테고리·키워드로 거름)</option>
                 <option value="commits">커밋 (고른 저장소)</option>
+                <option value="next">차주 계획 (다음 주 할 일 · 못 끝낸 일 · 다음 주 마감)</option>
               </select>
             </label>
-            <label className="st-field">
-              최대 줄 수
-              <input type="number" min={1} max={12} value={p.maxLines ?? 3} onChange={(e) => setPart(i, { maxLines: Number(e.target.value) || 3 })} />
-            </label>
+            {p.source !== 'next' && (
+              <label className="st-field">
+                최대 줄 수
+                <input type="number" min={1} max={12} value={p.maxLines ?? 3} onChange={(e) => setPart(i, { maxLines: Number(e.target.value) || 3 })} />
+              </label>
+            )}
           </div>
-          {p.source === 'items' ? (
+          {p.source !== 'commits' ? (
             <>
               <div className="st-field">
                 카테고리 (비우면 전부)
@@ -434,9 +436,16 @@ function WorkTextParts({ data }: { data: SettingsAll }) {
           </label>
         </div>
       ))}
-      <button className="btn btn-sm" onClick={addPart}>
-        + 요약 갈래 추가
-      </button>
+      <div className="actions">
+        <button className="btn btn-sm" onClick={() => addPart('items')}>
+          + 요약 갈래 추가
+        </button>
+        {!cfg.parts.some((p) => p.source === 'next') && (
+          <button className="btn btn-sm" onClick={() => addPart('next')}>
+            + 차주 계획 추가
+          </button>
+        )}
+      </div>
     </Section>
   )
 }
