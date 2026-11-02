@@ -55,6 +55,12 @@ public class JobService {
             log.warn("작업 실패 [{}]: {}", job.label, e.getMessage());
             job.status = Status.FAILED;
             job.message = e.getMessage();
+        } catch (Error e) {
+            // StackOverflowError 같은 Error 도 FAILED 로 — 놓치면 RUNNING 으로 남아 같은 key 를 다시 넣을 수 없고,
+            // executor 가 Future 안에 삼켜 로그에도 안 남는다
+            log.error("작업 실패 [{}]", job.label, e);
+            job.status = Status.FAILED;
+            job.message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getClass().getSimpleName() + ": " + e.getMessage();
         } finally {
             job.finishedAt = Instant.now();
         }
