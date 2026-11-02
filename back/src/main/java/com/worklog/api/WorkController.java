@@ -95,19 +95,6 @@ public class WorkController {
         return ResponseEntity.noContent().build();
     }
 
-    /** 계획 외 할 일을 이 주 보드에서 빼기 / 되돌리기 */
-    @PostMapping("/weeks/{week}/hidden/{id}")
-    public ResponseEntity<Void> hide(@PathVariable String week, @PathVariable long id) {
-        work.hide(week, id);
-        return ResponseEntity.noContent().build();
-    }
-
-    @DeleteMapping("/weeks/{week}/hidden/{id}")
-    public ResponseEntity<Void> unhide(@PathVariable String week, @PathVariable long id) {
-        work.unhide(week, id);
-        return ResponseEntity.noContent().build();
-    }
-
     @GetMapping("/work-items")
     public List<ItemSummary> items() {
         return work.itemSummaries();

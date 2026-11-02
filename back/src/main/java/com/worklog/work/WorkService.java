@@ -104,21 +104,18 @@ public class WorkService {
         Set<Long> plannedIds = plannedMap.keySet();
         Set<Long> extraIds = new HashSet<>(res.byItem.keySet());
         extraIds.removeAll(plannedIds);
-        // 계획 외로 끌려온 할 일 중 뺄 것 — 사용자가 이 주에서 뺐거나, 이 기간 전에 이미 끝낸 할 일(고정된 세션이 계속 일하는 경우)
-        Set<Long> manualHidden = "week".equals(p.kind()) ? store.hiddenIn(weeks) : Set.of();
+        // 보드 카드는 이 기간에 계획한 할 일만. 계획에 없는 할 일에 붙은 작업(고정된 세션이 계속 일하는 경우 등)은
+        // 카드로 끌어오지 않고 '이 기간 계획에 없는 할 일' 목록으로만 — 계획 외 작업(세션)으로도 보내지 않는다
         List<WorkItem> all = new ArrayList<>(plannedMap.values());
-        List<WorkItem> hiddenItems = new ArrayList<>();
-        for (WorkItem w : store.items(extraIds)) {
-            (manualHidden.contains(w.id()) || doneBefore(w, p.from()) ? hiddenItems : all).add(w);
-        }
+        List<WorkItem> hiddenItems = store.items(extraIds);
         List<WorkItem> known = new ArrayList<>(all);
         known.addAll(hiddenItems);
         // 뺀 할 일의 작업은 계획 외 작업으로도 안 보낸다
         List<LinkedDay> unassignedDays = withOrphans(res, known);
         List<HiddenItem> hidden = hiddenItems.stream()
-                .map(w -> new HiddenItem(w.id(), w.title(), w.category(),
-                        res.byItem.getOrDefault(w.id(), List.of()).stream().mapToLong(LinkedDay::activeSec).sum(),
-                        !manualHidden.contains(w.id())))
+                .map(w -> new HiddenItem(w.id(), w.title(), w.category(), w.status(),
+                        res.byItem.getOrDefault(w.id(), List.of()).stream().mapToLong(LinkedDay::activeSec).sum()))
+                .sorted(Comparator.comparingLong(HiddenItem::activeSec).reversed())
                 .toList();
         Map<Long, List<String>> weeksByItem = store.weeksByItem(all.stream().map(WorkItem::id).toList());
 
@@ -171,11 +168,7 @@ public class WorkService {
                 nextKey, weeks, store.categories(), items, unassigned, hiddenShort, carryover, stats, hidden);
     }
 
-    /** 이 날짜 전에 이미 끝낸 할 일 */
-    private boolean doneBefore(WorkItem w, LocalDate from) {
-        return "DONE".equals(w.status()) && w.doneAt() != null
-                && LocalDate.ofInstant(Instant.parse(w.doneAt()), props.zone()).isBefore(from);
-    }
+
 
     private static boolean isTrace(UnassignedSession u, Ctx ctx) {
         if (u.activeSec() >= TRACE_SEC || u.confirmed()) {
@@ -366,17 +359,6 @@ public class WorkService {
         Period.of("week", weekKey);
         store.item(id).orElseThrow(() -> new IllegalArgumentException("업무가 없음: " + id));
         store.plan(weekKey, id);
-    }
-
-    /** 계획 외 할 일을 이 주 보드에서 뺀다(고정 연결은 그대로 — 다음 주엔 다시 보일 수 있음) */
-    public void hide(String weekKey, long id) {
-        Period.of("week", weekKey);
-        store.item(id).orElseThrow(() -> new IllegalArgumentException("업무가 없음: " + id));
-        store.hide(weekKey, id);
-    }
-
-    public void unhide(String weekKey, long id) {
-        store.unhide(weekKey, id);
     }
 
     public void unplan(String weekKey, long id) {

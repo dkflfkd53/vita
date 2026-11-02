@@ -538,7 +538,6 @@ function RowMenu({ item, board }: { item: WorkItem; board: Board }) {
   // 차주 이월 = 다음 주 계획에도 넣기(이번 주 기록은 그대로). 주 보기에서 끝나지 않은 할 일만
   const nextWeek = board.kind === 'week' && item.status !== 'DONE' ? board.nextKey : null
   const carried = !!nextWeek && item.weeks.includes(nextWeek)
-  const hide = useWorkMutation(() => api.hideItem(board.weekKey, item.id))
   const carry = useWorkMutation(() => api.planItem(nextWeek!, item.id))
   const uncarry = useWorkMutation(() => api.unplanItem(nextWeek!, item.id))
   return (
@@ -555,18 +554,7 @@ function RowMenu({ item, board }: { item: WorkItem; board: Board }) {
             (item.planned ? (
               <button onClick={() => unplan.mutate(undefined)}>이번 주 계획에서 빼기</button>
             ) : (
-              <>
-                <button onClick={() => plan.mutate(undefined)}>이번 주 계획에 넣기</button>
-                <button
-                  onClick={() => {
-                    hide.mutate(undefined)
-                    setOpen(false)
-                  }}
-                  title="이번 주 보드와 계획 외 작업에서 빼요. 세션 연결은 그대로라 기록은 남아요"
-                >
-                  이번 주 보드에서 빼기
-                </button>
-              </>
+              <button onClick={() => plan.mutate(undefined)}>이번 주 계획에 넣기</button>
             ))}
           {nextWeek &&
             (carried ? (
@@ -764,41 +752,44 @@ function Unassigned({ board }: { board: Board }) {
   )
 }
 
-/** 이번 주에서 뺀 계획 외 할 일 — 접힌 한 줄, 펼치면 다시 보이기·계획에 넣기 */
+/** 이 기간 계획에 없지만 작업이 붙은 할 일 — 카드로 끌어오지 않고 접힌 한 줄, 펼치면 계획에 넣기 */
 function HiddenItems({ board }: { board: Board }) {
   const [open, setOpen] = useState(false)
-  const unhide = useWorkMutation((id: number) => api.unhideItem(board.weekKey, id))
   const plan = useWorkMutation((id: number) => api.planItem(board.weekKey, id))
-  if (board.kind !== 'week' || board.hidden.length === 0) return null
+  if (board.hidden.length === 0) return null
+  const sec = board.hidden.reduce((t, h) => t + h.activeSec, 0)
+  const period = board.kind === 'week' ? '이번 주' : '이번 달'
   return (
     <section className="hidden-items">
       <button className="hidden-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
         <Icon name="chevron" size={12} className={open ? 'rot' : ''} />
-        이번 주에서 뺀 할 일 {board.hidden.length}개
+        {period} 계획에 없는 할 일 {board.hidden.length}개 · {fmtShort(sec)}
       </button>
       {open && (
-        <ul>
-          {board.hidden.map((h) => (
-            <li key={h.id}>
-              <span className="h-title">{h.title}</span>
-              <span className="subtle">
-                {h.category ?? ''}
-                {h.activeSec > 0 && ` · 이번 주 ${fmtShort(h.activeSec)}`}
-                {h.auto ? ' · 지난주까지 끝낸 할 일이라 저절로 빠짐' : ''}
-              </span>
-              <span className="h-actions">
-                {!h.auto && (
-                  <button className="btn btn-ghost btn-sm" onClick={() => unhide.mutate(h.id)}>
-                    다시 보이기
-                  </button>
+        <>
+          <p className="loose-hint">연결된 세션이 계속 일해서 작업이 붙었지만 {period} 계획엔 없는 할 일이에요. 보드 합계·주간보고 글엔 안 들어가요.</p>
+          <ul>
+            {board.hidden.map((h) => (
+              <li key={h.id}>
+                <StatusIcon status={h.status} size={13} />
+                <Link className="h-title" to={`/work/${h.id}`}>
+                  {h.title}
+                </Link>
+                <span className="subtle">
+                  {h.category ?? ''}
+                  {h.activeSec > 0 && ` · ${fmtShort(h.activeSec)}`}
+                </span>
+                {board.kind === 'week' && h.status !== 'DONE' && (
+                  <span className="h-actions">
+                    <button className="btn btn-ghost btn-sm" onClick={() => plan.mutate(h.id)}>
+                      이번 주 계획에 넣기
+                    </button>
+                  </span>
                 )}
-                <button className="btn btn-ghost btn-sm" onClick={() => plan.mutate(h.id)}>
-                  이번 주 계획에 넣기
-                </button>
-              </span>
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </section>
   )
