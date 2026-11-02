@@ -125,6 +125,14 @@ CREATE TABLE IF NOT EXISTS week_plan (
     PRIMARY KEY (week_key, work_item_id)
 );
 
+-- 이번 주 보드에서 뺀 계획 외 할 일(고정 연결된 세션이 계속 일해도 그 주 보드·계획 외 작업에 안 나옴)
+CREATE TABLE IF NOT EXISTS week_hidden (
+    week_key     TEXT NOT NULL,
+    work_item_id INTEGER NOT NULL,
+    added_at     TEXT NOT NULL,
+    PRIMARY KEY (week_key, work_item_id)
+);
+
 -- 세션 × 날짜 → 업무. work_item_id NULL = 계획 외로 판단됨. source = auto(AI) | manual(사용자)
 -- 사용자가 고친 줄(manual)은 AI 재분류가 덮어쓰지 않는다
 CREATE TABLE IF NOT EXISTS work_link (

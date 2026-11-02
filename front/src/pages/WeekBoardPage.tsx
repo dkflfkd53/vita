@@ -126,6 +126,7 @@ export function WeekBoardPage() {
           {data.carryover.length > 0 && <Carryover board={data} />}
           <TodoGroups board={data} openId={openId} setOpenId={setOpenId} />
           <Unassigned board={data} />
+          <HiddenItems board={data} />
         </>
       )}
     </div>
@@ -532,6 +533,7 @@ function RowMenu({ item, board }: { item: WorkItem; board: Board }) {
   // 차주 이월 = 다음 주 계획에도 넣기(이번 주 기록은 그대로). 주 보기에서 끝나지 않은 할 일만
   const nextWeek = board.kind === 'week' && item.status !== 'DONE' ? board.nextKey : null
   const carried = !!nextWeek && item.weeks.includes(nextWeek)
+  const hide = useWorkMutation(() => api.hideItem(board.weekKey, item.id))
   const carry = useWorkMutation(() => api.planItem(nextWeek!, item.id))
   const uncarry = useWorkMutation(() => api.unplanItem(nextWeek!, item.id))
   return (
@@ -546,9 +548,20 @@ function RowMenu({ item, board }: { item: WorkItem; board: Board }) {
           </Link>
           {board.kind === 'week' &&
             (item.planned ? (
-              <button onClick={() => unplan.mutate(undefined)}>이번 주에서 빼기</button>
+              <button onClick={() => unplan.mutate(undefined)}>이번 주 계획에서 빼기</button>
             ) : (
-              <button onClick={() => plan.mutate(undefined)}>이번 주 계획에 넣기</button>
+              <>
+                <button onClick={() => plan.mutate(undefined)}>이번 주 계획에 넣기</button>
+                <button
+                  onClick={() => {
+                    hide.mutate(undefined)
+                    setOpen(false)
+                  }}
+                  title="이번 주 보드와 계획 외 작업에서 빼요. 세션 연결은 그대로라 기록은 남아요"
+                >
+                  이번 주 보드에서 빼기
+                </button>
+              </>
             ))}
           {nextWeek &&
             (carried ? (
@@ -740,6 +753,46 @@ function Unassigned({ board }: { board: Board }) {
             <LooseRow key={u.sessionId} u={u} board={board} />
           ))}
         </>
+      )}
+    </section>
+  )
+}
+
+/** 이번 주에서 뺀 계획 외 할 일 — 접힌 한 줄, 펼치면 다시 보이기·계획에 넣기 */
+function HiddenItems({ board }: { board: Board }) {
+  const [open, setOpen] = useState(false)
+  const unhide = useWorkMutation((id: number) => api.unhideItem(board.weekKey, id))
+  const plan = useWorkMutation((id: number) => api.planItem(board.weekKey, id))
+  if (board.kind !== 'week' || board.hidden.length === 0) return null
+  return (
+    <section className="hidden-items">
+      <button className="hidden-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <Icon name="chevron" size={12} className={open ? 'rot' : ''} />
+        이번 주에서 뺀 할 일 {board.hidden.length}개
+      </button>
+      {open && (
+        <ul>
+          {board.hidden.map((h) => (
+            <li key={h.id}>
+              <span className="h-title">{h.title}</span>
+              <span className="subtle">
+                {h.category ?? ''}
+                {h.activeSec > 0 && ` · 이번 주 ${fmtShort(h.activeSec)}`}
+                {h.auto ? ' · 지난주까지 끝낸 할 일이라 저절로 빠짐' : ''}
+              </span>
+              <span className="h-actions">
+                {!h.auto && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => unhide.mutate(h.id)}>
+                    다시 보이기
+                  </button>
+                )}
+                <button className="btn btn-ghost btn-sm" onClick={() => plan.mutate(h.id)}>
+                  이번 주 계획에 넣기
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   )

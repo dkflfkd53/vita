@@ -48,9 +48,15 @@ public final class WorkViews {
      * kind = week | month, key = 2026-W44 | 2026-10. weekKey = 새 할 일·계획 외 등록이 들어갈 주(월 보기면 이번 주 또는 그 달의 끝/첫 주).
      * weeks = 이 기간에 걸친 ISO 주들
      */
+    /** hidden = 이 기간 보드에서 뺀 계획 외 할 일(직접 뺐거나, 이 기간 전에 끝낸 할 일이라 저절로 빠진 것) */
     public record Board(String kind, String key, String weekKey, String label, String from, String to, String prevKey,
                         String nextKey, List<String> weeks, List<String> categories, List<ItemView> items,
-                        List<UnassignedSession> unassigned, int hiddenShort, List<ItemView> carryover, BoardStats stats) {
+                        List<UnassignedSession> unassigned, int hiddenShort, List<ItemView> carryover, BoardStats stats,
+                        List<HiddenItem> hidden) {
+    }
+
+    /** auto = 이 기간 전에 끝낸 할 일이라 저절로 빠짐(다시 보이려면 계획에 넣기), 아니면 사용자가 뺌 */
+    public record HiddenItem(long id, String title, String category, long activeSec, boolean auto) {
     }
 
     public record ItemDetail(ItemView item, List<String> weeks, int activeDays) {

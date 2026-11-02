@@ -87,6 +87,8 @@ export const api = {
   classify: (week: string) => request<JobView>(`/weeks/${week}/classify?redo=true`, { method: 'POST' }),
   planItem: (week: string, id: number) => request<void>(`/weeks/${week}/items/${id}`, { method: 'POST' }),
   unplanItem: (week: string, id: number) => request<void>(`/weeks/${week}/items/${id}`, { method: 'DELETE' }),
+  hideItem: (week: string, id: number) => request<void>(`/weeks/${week}/hidden/${id}`, { method: 'POST' }),
+  unhideItem: (week: string, id: number) => request<void>(`/weeks/${week}/hidden/${id}`, { method: 'DELETE' }),
   taskWork: () => request<TaskWork[]>('/task-work'),
   workItems: () => request<WorkItemSummary[]>('/work-items'),
   workItem: (id: number) => request<WorkItemDetail>(`/work-items/${id}`),

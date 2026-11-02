@@ -1192,3 +1192,11 @@ a.tg-title:hover { color: var(--accent); }
 .st-fill { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; }
 .st-grid > * { min-width: 0; }
 @media (max-width: 720px) { .st-grid { grid-template-columns: 1fr !important; } .st-field select, .st-field input { max-width: 100%; } }
+/* 이번 주에서 뺀 계획 외 할 일 */
+.hidden-items { margin: -12px 0 26px; font-size: 12.5px; }
+.hidden-toggle { display: inline-flex; align-items: center; gap: 5px; border: 0; background: none; padding: 4px 6px; color: var(--text-subtle); font: inherit; cursor: pointer; }
+.hidden-toggle:hover { color: var(--text); }
+.hidden-items ul { list-style: none; margin: 4px 0 0; padding: 0 6px; display: flex; flex-direction: column; gap: 2px; }
+.hidden-items li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 4px 0; border-top: 1px solid var(--border-muted); }
+.hidden-items .h-title { color: var(--text-muted); min-width: 0; }
+.hidden-items .h-actions { margin-left: auto; display: flex; gap: 4px; }

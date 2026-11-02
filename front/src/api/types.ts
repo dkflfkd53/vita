@@ -398,6 +398,8 @@ export interface Board {
   hiddenShort: number
   carryover: WorkItem[]
   stats: BoardStats
+  /** 이 기간 보드에서 뺀 계획 외 할 일 — auto = 이 기간 전에 끝낸 할 일이라 저절로 빠짐 */
+  hidden: { id: number; title: string; category: string | null; activeSec: number; auto: boolean }[]
 }
 
 export interface WorkItemDetail {

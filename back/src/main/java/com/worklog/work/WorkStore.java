@@ -5,10 +5,12 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -79,6 +81,7 @@ public class WorkStore {
     @Transactional
     public void deleteItem(long id) {
         jdbc.sql("DELETE FROM week_plan WHERE work_item_id = ?").param(id).update();
+        jdbc.sql("DELETE FROM week_hidden WHERE work_item_id = ?").param(id).update();
         jdbc.sql("DELETE FROM work_link WHERE work_item_id = ?").param(id).update();
         jdbc.sql("DELETE FROM session_pin WHERE work_item_id = ?").param(id).update();
         jdbc.sql("DELETE FROM work_item WHERE id = ?").param(id).update();
@@ -116,6 +119,24 @@ public class WorkStore {
                   AND NOT EXISTS (SELECT 1 FROM week_plan q WHERE q.week_key = ? AND q.work_item_id = w.id)
                 ORDER BY w.id
                 """).params(prevWeek, week).query(WorkStore::mapItem).list();
+    }
+
+    /** 이 주들에서 보드에서 뺀 할 일 id */
+    public Set<Long> hiddenIn(List<String> weeks) {
+        if (weeks.isEmpty()) {
+            return Set.of();
+        }
+        return new HashSet<>(jdbc.sql("SELECT work_item_id FROM week_hidden WHERE week_key IN (:weeks)")
+                .param("weeks", weeks).query(Long.class).list());
+    }
+
+    public void hide(String weekKey, long itemId) {
+        jdbc.sql("INSERT OR IGNORE INTO week_hidden (week_key, work_item_id, added_at) VALUES (?, ?, ?)")
+                .params(weekKey, itemId, Instant.now().toString()).update();
+    }
+
+    public void unhide(String weekKey, long itemId) {
+        jdbc.sql("DELETE FROM week_hidden WHERE week_key = ? AND work_item_id = ?").params(weekKey, itemId).update();
     }
 
     public void plan(String weekKey, long itemId) {
