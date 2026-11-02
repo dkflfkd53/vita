@@ -1200,3 +1200,6 @@ a.tg-title:hover { color: var(--accent); }
 .hidden-items li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 4px 0; border-top: 1px solid var(--border-muted); }
 .hidden-items .h-title { color: var(--text-muted); min-width: 0; }
 .hidden-items .h-actions { margin-left: auto; display: flex; gap: 4px; }
+.hidden-pill { font-size: 12px; font-weight: 600; color: var(--text-muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 9px; }
+.hidden-callout { margin-bottom: 16px; align-items: center; }
+.hidden-callout > div { flex: 1; min-width: 0; }

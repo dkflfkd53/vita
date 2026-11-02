@@ -234,11 +234,18 @@ public class WorkQueryService {
                 u.total(index.taskOfSession()::containsKey).costUsd());
     }
 
+    /** key = 작업 묶음 키. 숨긴 세션은 묶음에서 빠져 있어, 그 세션 id 면 세션 하나로 상세를 만든다 */
     public TaskDetail task(String key) {
         Index index = catalog.build();
         Task task = index.tasks().get(key);
+        boolean hidden = false;
         if (task == null) {
-            return null;
+            SessionRow s = store.sessions().stream().filter(r -> r.hidden() && r.id().equals(key)).findFirst().orElse(null);
+            if (s == null) {
+                return null;
+            }
+            task = new Task(s.id(), s.displayTitle(), s.project() == null ? List.of() : List.of(s.project()), List.of(s));
+            hidden = true;
         }
         Set<String> ids = ids(task);
         List<SessionDayRow> days = store.allSessionDays().stream().filter(d -> ids.contains(d.sessionId())).toList();
@@ -263,7 +270,7 @@ public class WorkQueryService {
         List<SessionInfo> sessions = task.sessions().stream()
                 .sorted(Comparator.comparing(SessionRow::lastAt).reversed())
                 .map(WorkQueryService::info).toList();
-        return new TaskDetail(summary, sessions, timeline, recent);
+        return new TaskDetail(summary, sessions, timeline, recent, hidden, u.byModel(ids::contains));
     }
 
     public List<SessionInfo> hiddenSessions() {

@@ -67,8 +67,9 @@ public final class Views {
                           double costUsd) {
     }
 
+    /** hidden = 숨긴 세션 하나로 만든 상세(캘린더·리포트·합계에선 빠짐), models = 모델별 토큰·환산 */
     public record TaskDetail(TaskSummary summary, List<SessionInfo> sessions, List<TaskDay> days,
-                             List<PromptView> recentPrompts) {
+                             List<PromptView> recentPrompts, boolean hidden, List<ModelUsage> models) {
     }
 
     public record ProjectStat(String project, long activeSec, int commits, double costUsd) {

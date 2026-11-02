@@ -163,6 +163,10 @@ export interface TaskDetail {
   sessions: SessionInfo[]
   days: TaskDay[]
   recentPrompts: PromptView[]
+  /** 숨긴 세션 하나로 만든 상세 — 캘린더·리포트·합계에선 빠져 있음 */
+  hidden: boolean
+  /** 모델별 토큰·API 환산 */
+  models: ModelUsage[]
 }
 
 export interface ProjectStat {

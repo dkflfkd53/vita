@@ -247,7 +247,9 @@ function HiddenSessions() {
         {data.map((s) => (
           <div key={s.id} className="session-item">
             <div className="row">
-              <span className="name">{s.title}</span>
+              <Link className="name" to={`/sessions/${s.id}`} title="상세 — 작업 시간·사용량·요청 기록">
+                {s.title}
+              </Link>
               <button className="btn btn-sm" onClick={() => unhide.mutate(s.id)}>
                 <Icon name="eye" size={12} /> 다시 보이기
               </button>

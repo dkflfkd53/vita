@@ -6,6 +6,7 @@ import { api } from '../api/client'
 import type { SessionInfo } from '../api/types'
 import { Icon } from '../components/Icon'
 import { ErrorBox, Loading, ProjectLabel, StatusLabel } from '../components/common'
+import { UsageCompact } from '../components/UsageBreakdown'
 import { fmtDateTime, fmtDayLong, fmtDuration, fmtShort, fmtTime, fmtUsd } from '../lib/format'
 
 export function TaskDetailPage() {
@@ -27,6 +28,7 @@ export function TaskDetailPage() {
         <div>
           <h1 style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             {t.title} <StatusLabel status={t.status} busy={t.busy} />
+            {data.hidden && <span className="hidden-pill">숨긴 세션</span>}
           </h1>
           <p style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             {t.projects.map((p) => (
@@ -38,6 +40,8 @@ export function TaskDetailPage() {
           </p>
         </div>
       </div>
+
+      {data.hidden && <HiddenNotice sessionId={data.sessions[0]?.id} />}
 
       <div className="stat-row five">
         <div className="stat">
@@ -109,6 +113,18 @@ export function TaskDetailPage() {
             </div>
           </div>
 
+          {data.models.length > 0 && (
+            <div className="card">
+              <div className="card-head">
+                <h3>모델별 토큰·환산</h3>
+              </div>
+              <div className="card-body" style={{ paddingTop: 8 }}>
+                <UsageCompact models={data.models} />
+                <p className="ut-note">API 단가로 환산한 추정치(구독 요금과 다름) · 서브에이전트 포함 · 모델을 누르면 계산식</p>
+              </div>
+            </div>
+          )}
+
           <div className="card">
             <div className="card-head">
               <h3>최근 요청</h3>
@@ -132,6 +148,30 @@ export function TaskDetailPage() {
   )
 }
 
+/** 숨긴 세션 상세 머리 — 합계에서 빠져 있다는 안내와 다시 보이기 */
+function HiddenNotice({ sessionId }: { sessionId: string | undefined }) {
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+  const unhide = useMutation({
+    mutationFn: () => api.updateSession(sessionId!, { hidden: false }),
+    onSuccess: () => {
+      qc.invalidateQueries()
+      navigate('/sessions?view=list')
+    },
+  })
+  return (
+    <div className="callout hidden-callout">
+      <Icon name="eyeOff" size={16} />
+      <div>숨긴 세션이에요. 기록은 그대로 남아 있지만 캘린더·리포트·주간 합계·AI 사용 통계에서는 빠져 있어요.</div>
+      {sessionId && (
+        <button className="btn btn-sm" onClick={() => unhide.mutate()} disabled={unhide.isPending}>
+          <Icon name="eye" size={12} /> 다시 보이기
+        </button>
+      )}
+    </div>
+  )
+}
+
 function SessionRow({ session }: { session: SessionInfo }) {
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -142,8 +182,8 @@ function SessionRow({ session }: { session: SessionInfo }) {
     onSuccess: (_, patch) => {
       setEditing(false)
       qc.invalidateQueries()
-      // 이름 변경·숨김으로 이 작업 묶음 자체가 바뀔 수 있어 목록으로 돌아간다
-      if (patch.hidden || patch.title !== undefined) navigate('/sessions?view=list')
+      // 이름 변경·숨김·다시 보이기로 이 작업 묶음 자체가 바뀔 수 있어 목록으로 돌아간다
+      if (patch.hidden !== undefined || patch.title !== undefined) navigate('/sessions?view=list')
     },
   })
 
@@ -173,9 +213,15 @@ function SessionRow({ session }: { session: SessionInfo }) {
           <button className="btn btn-ghost icon-btn btn-sm" title="이름 바꾸기" onClick={() => setEditing(true)}>
             <Icon name="pencil" size={13} />
           </button>
-          <button className="btn btn-ghost icon-btn btn-sm" title="숨기기 — 캘린더·리포트에서 빠져요" onClick={() => update.mutate({ hidden: true })}>
-            <Icon name="eyeOff" size={13} />
-          </button>
+          {session.hidden ? (
+            <button className="btn btn-ghost icon-btn btn-sm" title="다시 보이기 — 캘린더·리포트에 다시 들어가요" onClick={() => update.mutate({ hidden: false })}>
+              <Icon name="eye" size={13} />
+            </button>
+          ) : (
+            <button className="btn btn-ghost icon-btn btn-sm" title="숨기기 — 캘린더·리포트에서 빠져요" onClick={() => update.mutate({ hidden: true })}>
+              <Icon name="eyeOff" size={13} />
+            </button>
+          )}
         </div>
       )}
       <div className="meta">
