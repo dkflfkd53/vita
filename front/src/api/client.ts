@@ -22,6 +22,7 @@ import type {
   ReportKind,
   ReportTemplate,
   ReportView,
+  PeriodKind,
   SessionInfo,
   TaskDetail,
   TaskWork,
@@ -115,10 +116,10 @@ export const api = {
   workTextAi: (week: string, part: WorkTextPartKey | 'all') => request<JobView>(`/weeks/${week}/work-text/ai?part=${part}`, { method: 'POST' }),
   addCategory: (name: string) => request<void>('/categories', { method: 'POST', body: JSON.stringify({ name }) }),
 
-  observer: (week: string, scope: string | null) =>
-    request<Observer>(`/observer/weeks/${week}${scope ? `?scope=${scope}` : ''}`),
-  observerPropose: (week: string, scope: string | null) =>
-    request<JobView>(`/observer/weeks/${week}/proposals${scope ? `?scope=${scope}` : ''}`, { method: 'POST' }),
+  observer: (kind: PeriodKind, key: string, scope: string | null) =>
+    request<Observer>(`/observer/${kind}/${key}${scope ? `?scope=${encodeURIComponent(scope)}` : ''}`),
+  observerPropose: (kind: PeriodKind, key: string, scope: string | null) =>
+    request<JobView>(`/observer/${kind}/${key}/proposals${scope ? `?scope=${encodeURIComponent(scope)}` : ''}`, { method: 'POST' }),
   insightTargets: () => request<InsightTarget[]>('/observer/targets'),
   insights: () => request<Insight[]>('/observer/insights'),
   createInsight: (body: InsightPatch & { title: string }, week: string) =>

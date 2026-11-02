@@ -32,6 +32,17 @@ public class ObserverController {
 
     private final ObserverService service;
 
+    /** kind = week | month | year */
+    @GetMapping("/{kind:week|month|year}/{key}")
+    public Observer period(@PathVariable String kind, @PathVariable String key, @RequestParam(required = false) String scope) {
+        return service.observer(kind, key, scope);
+    }
+
+    @PostMapping("/{kind:week|month|year}/{key}/proposals")
+    public JobView proposePeriod(@PathVariable String kind, @PathVariable String key, @RequestParam(required = false) String scope) {
+        return service.submitProposals(kind, key, scope).view();
+    }
+
     @GetMapping("/weeks/{week}")
     public Observer week(@PathVariable String week, @RequestParam(required = false) String scope) {
         return service.observer(week, scope);

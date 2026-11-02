@@ -10,7 +10,7 @@ import { Icon } from '../components/Icon'
 import { ErrorBox, Loading, ProjectLabel } from '../components/common'
 import { totalTokens, UsageButton, UsageCompact } from '../components/UsageBreakdown'
 import { WorkTextDialog } from '../components/WorkTextDialog'
-import { addDays, fmtDateTime, fmtDuration, fmtShort, fmtTokens, fmtUsd, monthKey, parseYmd, projectColor, today, weekKey, weekday } from '../lib/format'
+import { addDays, fmtDateTime, fmtDuration, fmtShort, fmtTokens, fmtUsd, monthKey, parseYmd, periodKeyOf, projectColor, today, weekKey, weekday } from '../lib/format'
 
 /**
  * 리포트 — 주간·월간 AI 업무 보고서. 기본 리포트 + 설정의 리포트 양식(그 기간 종류만)을 버튼으로 골라 쓴다.
@@ -19,7 +19,7 @@ import { addDays, fmtDateTime, fmtDuration, fmtShort, fmtTokens, fmtUsd, monthKe
 export function ReportsPage() {
   const [params, setParams] = useSearchParams()
   const kind = (params.get('kind') as ReportKind) ?? 'week'
-  const key = params.get('key') ?? (kind === 'week' ? weekKey(new Date()) : today().slice(0, 7))
+  const key = params.get('key') ?? periodKeyOf(kind)
   const settings = useSettings()
   const templates = (settings.data?.reportTemplates ?? []).filter((t) => t.kind === kind)
   const wanted = params.get('t') ?? 'default'
@@ -33,6 +33,7 @@ export function ReportsPage() {
   const shift = (n: number) => {
     if (!data) return
     if (kind === 'week') go(kind, weekKey(addDays(parseYmd(data.from), n * 7)))
+    else if (kind === 'year') go(kind, String(Number(key) + n))
     else {
       const d = parseYmd(data.from)
       d.setMonth(d.getMonth() + n)
@@ -45,7 +46,7 @@ export function ReportsPage() {
       <div className="page-head">
         <div>
           <h1>리포트</h1>
-          <p>세션 기록을 모아 주간·월간 업무 보고서로 정리해요. 설정의 리포트 양식을 고르면 그 틀대로 써요.</p>
+          <p>세션 기록을 모아 주간·월간·연간 업무 보고서로 정리해요. 설정의 리포트 양식을 고르면 그 틀대로 써요.</p>
         </div>
         <div className="segmented">
           <button className={kind === 'week' ? 'on' : ''} onClick={() => go('week', weekKey(new Date()))}>
@@ -53,6 +54,9 @@ export function ReportsPage() {
           </button>
           <button className={kind === 'month' ? 'on' : ''} onClick={() => go('month', today().slice(0, 7))}>
             월간
+          </button>
+          <button className={kind === 'year' ? 'on' : ''} onClick={() => go('year', periodKeyOf('year'))}>
+            연간
           </button>
         </div>
       </div>
@@ -175,7 +179,9 @@ function ReportBody({ report }: { report: ReportView }) {
     },
   })
   const maxProject = Math.max(1, ...s.projects.map((p) => p.activeSec))
-  const maxDay = Math.max(1, ...s.days.map((d) => d.activeSec))
+  // 연간은 달마다 한 막대
+  const bars = report.kind === 'year' ? byMonth(s.days) : s.days
+  const maxDay = Math.max(1, ...bars.map((d) => d.activeSec))
   const todayKey = today()
 
   return (
@@ -246,7 +252,7 @@ function ReportBody({ report }: { report: ReportView }) {
                 <Icon name="sparkle" size={26} className="ai" />
                 <h3>{report.title} — 아직 작성 전이에요</h3>
                 <p>
-                  오른쪽 위 <b>AI 리포트 작성</b>을 누르면 이 기간의 하루 요약을 먼저 채운 뒤
+                  오른쪽 위 <b>AI 리포트 작성</b>을 누르면 {report.kind === 'year' ? '달마다 월간 리포트·작업 기록을 모아' : '이 기간의 하루 요약을 먼저 채운 뒤'}
                   {report.template === 'default' ? ' 보고서를 써요.' : ' 이 양식대로 채워요.'}
                   <br />
                   날짜 수에 따라 1~3분쯤 걸려요.
@@ -262,19 +268,23 @@ function ReportBody({ report }: { report: ReportView }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="card">
             <div className="card-head">
-              <h3>날짜별 작업 시간</h3>
+              <h3>{report.kind === 'year' ? '달별 작업 시간' : '날짜별 작업 시간'}</h3>
             </div>
             <div className="card-body">
               <div className="day-bars">
-                {s.days.filter((d) => ![0, 6].includes(parseYmd(d.day).getDay())).map((d) => (
+                {bars.filter((d) => report.kind === 'year' || ![0, 6].includes(parseYmd(d.day).getDay())).map((d) => (
                   <div
                     key={d.day}
                     className="d"
                     title={`${d.day} · ${fmtDuration(d.activeSec)} · 커밋 ${d.commits} · ${fmtUsd(d.costUsd)}`}
-                    onClick={() => navigate(`/sessions?d=${d.day}&day=${d.day}`)}
+                    onClick={() =>
+                      navigate(report.kind === 'year' ? `/report?kind=month&key=${d.day.slice(0, 7)}` : `/sessions?d=${d.day}&day=${d.day}`)
+                    }
                   >
                     <div className="b" style={{ height: `${(d.activeSec / maxDay) * 100}%`, opacity: d.day > todayKey ? 0 : undefined }} />
-                    <span className="l">{report.kind === 'week' ? weekday(d.day) : Number(d.day.slice(8))}</span>
+                    <span className="l">
+                      {report.kind === 'year' ? `${Number(d.day.slice(5, 7))}월` : report.kind === 'week' ? weekday(d.day) : Number(d.day.slice(8))}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -344,4 +354,15 @@ function ReportBody({ report }: { report: ReportView }) {
       </div>
     </>
   )
+}
+
+/** 날짜별 → 달별(연간 막대) — day 는 그 달 1일 */
+function byMonth(days: ReportView['stats']['days']): ReportView['stats']['days'] {
+  const m = new Map<string, ReportView['stats']['days'][number]>()
+  for (const d of days) {
+    const k = d.day.slice(0, 7)
+    const cur = m.get(k)
+    m.set(k, cur ? { ...cur, activeSec: cur.activeSec + d.activeSec, commits: cur.commits + d.commits, costUsd: cur.costUsd + d.costUsd } : { ...d, day: `${k}-01` })
+  }
+  return [...m.values()]
 }

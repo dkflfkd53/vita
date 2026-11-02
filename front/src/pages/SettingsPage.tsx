@@ -327,6 +327,9 @@ function ReportTemplates({ data }: { data: SettingsAll }) {
               <button className={t.kind === 'month' ? 'on' : ''} onClick={() => set(i, { kind: 'month' })}>
                 월간
               </button>
+              <button className={t.kind === 'year' ? 'on' : ''} onClick={() => set(i, { kind: 'year' })}>
+                연간
+              </button>
             </div>
             <button className="btn btn-ghost btn-sm icon-btn" onClick={() => move(i, -1)} disabled={i === 0} aria-label="위로">
               ↑

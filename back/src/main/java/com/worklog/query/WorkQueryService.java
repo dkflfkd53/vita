@@ -338,9 +338,11 @@ public class WorkQueryService {
             return s != null && index.taskOfSession().containsKey(id) && (sc == null || sc.equals(s.project()));
         };
         UsageService.Index u = usage.index(from, to);
-        // 한 달 전체면 지난달, 아니면 바로 앞 같은 길이
+        // 한 해 전체면 작년, 한 달 전체면 지난달, 아니면 바로 앞 같은 길이
+        boolean wholeYear = from.getDayOfYear() == 1 && to.equals(from.withMonth(12).withDayOfMonth(31));
         boolean wholeMonth = from.getDayOfMonth() == 1 && to.equals(YearMonth.from(from).atEndOfMonth());
-        LocalDate pFrom = wholeMonth ? from.minusMonths(1) : from.minusDays(ChronoUnit.DAYS.between(from, to) + 1);
+        LocalDate pFrom = wholeYear ? from.minusYears(1)
+                : wholeMonth ? from.minusMonths(1) : from.minusDays(ChronoUnit.DAYS.between(from, to) + 1);
         LocalDate pTo = from.minusDays(1);
         UsageTotal previous = usage.index(pFrom, pTo).total(in);
 

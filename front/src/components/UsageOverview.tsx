@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
-import type { UsageOverview, UsageTotal } from '../api/types'
-import { addDays, fmtTokens, fmtUsd, monthKey, parseYmd, today, weekMonday, weekday, ymd } from '../lib/format'
+import type { PeriodKind, UsageOverview, UsageTotal } from '../api/types'
+import { PREV_PERIOD, fmtTokens, fmtUsd, parseYmd, periodRange, today, weekday } from '../lib/format'
 import { ErrorBox, Loading } from './common'
 import { PARTS, totalTokens, UsageTable } from './UsageBreakdown'
 
@@ -27,20 +27,9 @@ const fmtPct = (v: number) => (v >= 10 || v === 0 ? `${Math.round(v)}%` : `${v.t
 /** 실제로 새로 처리한 토큰 — 캐시에서 다시 읽은 입력을 뺀 나머지 */
 const fresh = (u: UsageTotal) => u.input + u.output + u.cacheWrite5m + u.cacheWrite1h
 
-type Period = 'week' | 'month'
-
-function range(week: string, period: Period): { from: string; to: string; label: string; prevLabel: string } {
-  const mon = weekMonday(week)
-  if (period === 'week') return { from: ymd(mon), to: ymd(addDays(mon, 6)), label: '이번 주', prevLabel: '지난주' }
-  const thu = addDays(mon, 3)
-  const first = new Date(thu.getFullYear(), thu.getMonth(), 1)
-  const last = new Date(thu.getFullYear(), thu.getMonth() + 1, 0)
-  return { from: ymd(first), to: ymd(last), label: `${thu.getMonth() + 1}월`, prevLabel: '지난달' }
-}
-
-export function UsageOverviewSection({ week, scope }: { week: string; scope: string | null }) {
-  const [period, setPeriod] = useState<Period>('week')
-  const r = range(week, period)
+/** 기간은 페이지 위쪽(주·월·연)을 따른다 */
+export function UsageOverviewSection({ kind, periodKey, scope }: { kind: PeriodKind; periodKey: string; scope: string | null }) {
+  const r = periodRange(kind, periodKey)
   const { data, isLoading, error } = useQuery({
     queryKey: ['usage-overview', r.from, r.to, scope],
     queryFn: () => api.usageOverview(r.from, r.to, scope),
@@ -54,23 +43,16 @@ export function UsageOverviewSection({ week, scope }: { week: string; scope: str
             크레딧 = 토큰 × 모델 단가로 환산한 API 금액(구독 요금과 다름) · 서브에이전트 포함{scope ? ` · ${scope}` : ''}
           </p>
         </div>
-        <div className="segmented">
-          <button className={period === 'week' ? 'on' : ''} onClick={() => setPeriod('week')}>
-            주
-          </button>
-          <button className={period === 'month' ? 'on' : ''} onClick={() => setPeriod('month')}>
-            월 ({monthKey(addDays(weekMonday(week), 3)).slice(5).replace(/^0/, '')}월)
-          </button>
-        </div>
       </div>
       {error && <ErrorBox error={error} />}
       {isLoading && <Loading />}
-      {data && (data.total.responses === 0 ? <p className="subtle uo-empty">이 기간 사용 기록이 없어요.</p> : <Body data={data} prevLabel={r.prevLabel} />)}
+      {data && (data.total.responses === 0 ? <p className="subtle uo-empty">이 기간 사용 기록이 없어요.</p> : <Body data={data} kind={kind} />)}
     </section>
   )
 }
 
-function Body({ data, prevLabel }: { data: UsageOverview; prevLabel: string }) {
+function Body({ data, kind }: { data: UsageOverview; kind: PeriodKind }) {
+  const prevLabel = PREV_PERIOD[kind]
   const t = data.total
   const tokens = totalTokens(t)
   const prevTokens = totalTokens(data.previous)
@@ -178,7 +160,7 @@ function Body({ data, prevLabel }: { data: UsageOverview; prevLabel: string }) {
         })}
       </div>
 
-      <Daily data={data} colorOf={colorOf} />
+      <Daily data={data} colorOf={colorOf} byMonth={kind === 'year'} />
 
       <details className="uo-details">
         <summary>계산식 표 (토큰 종류 × 단가)</summary>
@@ -244,18 +226,20 @@ function StackBar({
 }
 
 /** 날짜별 모델 쌓은 막대 — 크레딧/토큰 전환 */
-function Daily({ data, colorOf }: { data: UsageOverview; colorOf: Map<string, string> }) {
+function Daily({ data, colorOf, byMonth }: { data: UsageOverview; colorOf: Map<string, string>; byMonth: boolean }) {
   const [by, setBy] = useState<'cost' | 'tokens'>('cost')
   const val = (v: { costUsd: number; tokens: number }) => (by === 'cost' ? v.costUsd : v.tokens)
   const fmt = by === 'cost' ? fmtUsd : fmtTokens
-  const sums = data.days.map((d) => d.models.reduce((s, m) => s + val(m), 0))
+  // 연 보기는 달마다 한 막대
+  const days = byMonth ? monthly(data.days) : data.days
+  const sums = days.map((d) => d.models.reduce((s, m) => s + val(m), 0))
   const max = Math.max(1e-9, ...sums)
-  const month = data.days.length > 7
+  const month = !byMonth && days.length > 7
   const todayKey = today()
   return (
     <div className="uo-block">
       <div className="uo-label">
-        <b>날짜별</b>
+        <b>{byMonth ? '달별' : '날짜별'}</b>
         <div className="segmented sm">
           <button className={by === 'cost' ? 'on' : ''} onClick={() => setBy('cost')}>
             크레딧
@@ -266,22 +250,37 @@ function Daily({ data, colorOf }: { data: UsageOverview; colorOf: Map<string, st
         </div>
       </div>
       <div className={`uo-days${month ? ' month' : ''}`}>
-        {data.days.map((d, i) => (
+        {days.map((d, i) => (
           <div
             key={d.day}
-            className={`uo-day${d.day === todayKey ? ' today' : ''}`}
+            className={`uo-day${(byMonth ? d.day === todayKey.slice(0, 7) : d.day === todayKey) ? ' today' : ''}`}
             title={[`${d.day} · ${fmt(sums[i])}`, ...d.models.map((m) => `${short(m.model)} ${fmt(val(m))}`)].join('\n')}
           >
-            <span className="uo-day-v num">{sums[i] > 0 && !month ? fmt(sums[i]) : ''}</span>
+            <span className="uo-day-v num">{sums[i] > 0 && !month && !byMonth ? fmt(sums[i]) : ''}</span>
             <div className="uo-day-bar">
               {d.models.map((m) => (
                 <span key={m.model} style={{ height: `${(val(m) / max) * 100}%`, background: colorOf.get(m.model) }} />
               ))}
             </div>
-            <span className="uo-day-l">{month ? parseYmd(d.day).getDate() : weekday(d.day)}</span>
+            <span className="uo-day-l">{byMonth ? `${Number(d.day.slice(5))}월` : month ? parseYmd(d.day).getDate() : weekday(d.day)}</span>
           </div>
         ))}
       </div>
     </div>
   )
+}
+
+/** 날짜별 → 달별(day 키는 yyyy-MM) */
+function monthly(days: UsageOverview['days']): UsageOverview['days'] {
+  const m = new Map<string, Map<string, { model: string; costUsd: number; tokens: number }>>()
+  for (const d of days) {
+    const k = d.day.slice(0, 7)
+    if (!m.has(k)) m.set(k, new Map())
+    const g = m.get(k)!
+    for (const x of d.models) {
+      const cur = g.get(x.model) ?? { model: x.model, costUsd: 0, tokens: 0 }
+      g.set(x.model, { model: x.model, costUsd: cur.costUsd + x.costUsd, tokens: cur.tokens + x.tokens })
+    }
+  }
+  return [...m.entries()].map(([day, g]) => ({ day, models: [...g.values()] }))
 }

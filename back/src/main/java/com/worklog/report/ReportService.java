@@ -48,6 +48,8 @@ import lombok.extern.slf4j.Slf4j;
 public class ReportService {
 
     private static final int RAW_PROMPTS_PER_SESSION = 15;
+    /** 연간 입력에 넣는 달마다의 월간 리포트 길이 */
+    private static final int MONTH_REPORT_CHARS = 1500;
 
     private final WorklogProperties props;
     private final WorkQueryService query;
@@ -88,7 +90,7 @@ public class ReportService {
         ReportTemplate t = settings.reportTemplate(templateId)
                 .orElseThrow(() -> new IllegalArgumentException("없는 리포트 양식: " + templateId));
         if (!t.kind().equals(period.kind())) {
-            throw new IllegalArgumentException("'" + t.title() + "' 은 " + ("month".equals(t.kind()) ? "월간" : "주간") + " 양식입니다");
+            throw new IllegalArgumentException("'" + t.title() + "' 은 " + Period.of(t.kind(), Period.containing(t.kind(), period.from()).key()).kindLabel() + " 양식입니다");
         }
         return t;
     }
@@ -103,7 +105,9 @@ public class ReportService {
         return jobs.submit("report:" + period.kind() + ":" + period.key() + (template == null ? "" : ":" + template.id()),
                 what + " " + period.label(), progress -> {
                     collector.collectAndWait();
-                    List<LocalDate> missing = summaries.missingDays(period.from(), period.to());
+                    boolean year = "year".equals(period.kind());
+                    // 연간은 하루 요약을 365일치 먼저 채우지 않는다(달마다 월간 리포트·작업 목록을 근거로 쓴다)
+                    List<LocalDate> missing = year ? List.of() : summaries.missingDays(period.from(), period.to());
                     for (int i = 0; i < missing.size(); i++) {
                         progress.update("하루 요약 먼저 채우는 중 " + missing.get(i) + " (" + (i + 1) + "/" + missing.size() + ")");
                         try {
@@ -113,7 +117,7 @@ public class ReportService {
                         }
                     }
                     // 업무 기준으로 정리하려면 미분류 작업이 먼저 업무에 붙어 있어야 한다
-                    for (LocalDate d = period.from(); props.autoClassify() && !d.isAfter(period.to()); d = d.plusDays(7)) {
+                    for (LocalDate d = period.from(); !year && props.autoClassify() && !d.isAfter(period.to()); d = d.plusDays(7)) {
                         String week = Period.weekKey(d);
                         progress.update(week + " 업무 분류 확인 중");
                         try {
@@ -219,7 +223,12 @@ public class ReportService {
                     .append(hours(t.activeSec())).append("시간 · ").append(t.activeDays()).append("일\n");
         }
 
-        appendWork(sb, work);
+        boolean year = "year".equals(period.kind());
+        appendWork(sb, work, year);
+        if (year) {
+            appendMonths(sb, period);
+            return appendCommits(sb, period, 300);
+        }
 
         sb.append("\n## 날짜별 기록\n");
         LocalDate today = LocalDate.now(props.zone());
@@ -249,19 +258,54 @@ public class ReportService {
             }
         }
 
+        return appendCommits(sb, period, Integer.MAX_VALUE);
+    }
+
+    private String appendCommits(StringBuilder sb, Period period, int limit) {
         List<CommitView> commits = store.commits(period.from().toString(), period.to().toString()).stream()
                 .map(c -> new CommitView(c.repo(), c.hash(), c.at(), c.subject())).toList();
         if (!commits.isEmpty()) {
-            sb.append("\n## git 커밋\n");
-            commits.forEach(c -> sb.append("- [").append(c.repo()).append("] ").append(c.subject()).append('\n'));
+            sb.append("\n## git 커밋").append(commits.size() > limit ? " (" + commits.size() + "건 중 최근 " + limit + "건)" : "").append('\n');
+            commits.stream().skip(Math.max(0, commits.size() - limit))
+                    .forEach(c -> sb.append("- [").append(c.repo()).append("] ").append(c.subject()).append('\n'));
         }
         return sb.toString();
+    }
+
+    /** 연간 — 달마다 저장된 월간 리포트(앞부분), 없으면 그 달 통계·작업 목록 */
+    private void appendMonths(StringBuilder sb, Period year) {
+        LocalDate today = LocalDate.now(props.zone());
+        sb.append("\n## 달별 기록\n");
+        for (int m = 1; m <= 12; m++) {
+            Period month = Period.containing("month", year.from().withMonth(m));
+            if (month.from().isAfter(today)) {
+                break;
+            }
+            PeriodStats st = query.stats(month.from(), month.to());
+            if (st.activeSec() == 0 && st.commits() == 0) {
+                continue;
+            }
+            sb.append("### ").append(month.label()).append(" — 작업 ").append(hours(st.activeSec())).append("시간, 일한 날 ")
+                    .append(st.activeDays()).append("일, 커밋 ").append(st.commits()).append("건\n");
+            Optional<ReportRow> saved = store.report("month", month.key());
+            if (saved.isPresent()) {
+                sb.append("월간 리포트 요약:\n").append(oneLineBlock(saved.get().content(), MONTH_REPORT_CHARS)).append('\n');
+            } else {
+                st.tasks().stream().limit(10).forEach(t -> sb.append("- ").append(t.title()).append(" [")
+                        .append(t.project() == null ? "-" : t.project()).append("] ").append(hours(t.activeSec())).append("시간\n"));
+            }
+        }
+    }
+
+    private static String oneLineBlock(String text, int max) {
+        String s = text.strip();
+        return s.length() > max ? s.substring(0, max) + "…" : s;
     }
 
     private static final Map<String, String> STATUS_KO = Map.of(
             "PLANNED", "예정", "IN_PROGRESS", "진행 중", "DONE", "완료", "ON_HOLD", "보류");
 
-    private static void appendWork(StringBuilder sb, PeriodWork work) {
+    private static void appendWork(StringBuilder sb, PeriodWork work, boolean compact) {
         if (work.items().isEmpty()) {
             return;
         }
@@ -275,12 +319,15 @@ public class ReportService {
             if (w.memo() != null) {
                 sb.append("  메모: ").append(oneLine(w.memo(), 400)).append('\n');
             }
+            if (compact) {
+                continue; // 연간은 날짜별 작업 줄 대신 달별 기록으로
+            }
             for (LinkedDay d : w.sessionDays()) {
                 sb.append("  - ").append(d.day()).append(' ').append(d.title()).append(": ")
                         .append(d.summary() == null ? "(요약 없음)" : d.summary()).append('\n');
             }
         }
-        if (!work.unassigned().isEmpty()) {
+        if (!work.unassigned().isEmpty() && !compact) {
             sb.append("\n## 계획 외 작업 (업무 미연결)\n");
             for (LinkedDay d : work.unassigned()) {
                 sb.append("- ").append(d.day()).append(' ').append(d.title()).append(" (")

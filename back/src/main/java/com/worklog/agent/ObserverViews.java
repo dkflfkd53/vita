@@ -48,10 +48,12 @@ public final class ObserverViews {
     public record Snapshot(Breakdown breakdown, Counts counts, Map<String, Double> metrics) {
     }
 
-    public record TrendPoint(String week, String label, Map<String, Double> metrics, List<Long> adopted) {
+    /** key = 추이 한 칸의 기간 키(주 보기면 주, 월·연 보기면 달) */
+    public record TrendPoint(String key, String label, Map<String, Double> metrics, List<Long> adopted) {
     }
 
-    public record Observer(String week, String label, String prevKey, String nextKey, String scope, String coverageFrom,
+    /** kind = week | month | year, key = 2026-W44 | 2026-10 | 2026. previous = 바로 앞 같은 길이 기간(지난주·지난달·작년) */
+    public record Observer(String kind, String key, String label, String prevKey, String nextKey, String scope, String coverageFrom,
                            List<MetricDef> metricDefs, Snapshot current, Snapshot previous,
                            List<ToolStat> tools, List<CommandStat> slowCommands, List<ErrorSample> errors,
                            List<PromptSample> corrections, List<ReworkFile> rework, List<SessionStat> sessions,

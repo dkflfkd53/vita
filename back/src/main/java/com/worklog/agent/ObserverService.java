@@ -49,6 +49,7 @@ import lombok.extern.slf4j.Slf4j;
 public class ObserverService {
 
     private static final int TREND_WEEKS = 8;
+    private static final int TREND_MONTHS = 6;
     private static final int WINDOW_DAYS = 14;
     private static final int MIN_DAYS = 3;
     private static final double SIGNIFICANT = 0.10;
@@ -65,24 +66,32 @@ public class ObserverService {
     private final ProjectScope scope;
 
     public Observer observer(String weekKey, String scope) {
-        Period p = Period.of("week", weekKey);
+        return observer("week", weekKey, scope);
+    }
+
+    /**
+     * kind = week | month | year. 비교 = 바로 앞 같은 기간(지난주·지난달·작년),
+     * 추이 = 주 보기 최근 8주, 월 보기 최근 6개월, 연 보기 그 해 12개월
+     */
+    public Observer observer(String kind, String key, String scope) {
+        Period p = Period.of(kind, key);
+        Period before = p.previous();
         String sc = normalizeScope(scope);
-        LocalDate trendFrom = p.from().minusWeeks(TREND_WEEKS - 1);
-        Data all = calc.load(trendFrom, p.to());
+        List<Period> points = trendPoints(p);
+        LocalDate loadFrom = points.getFirst().from().isBefore(before.from()) ? points.getFirst().from() : before.from();
+        Data all = calc.load(loadFrom, p.to());
         Data cur = calc.slice(all, p.from(), p.to(), sc);
-        Data prev = calc.slice(all, p.from().minusWeeks(1), p.to().minusWeeks(1), sc);
+        Data prev = calc.slice(all, before.from(), before.to(), sc);
 
         List<InsightRow> insights = insightRows();
         List<TrendPoint> trend = new ArrayList<>();
-        for (int i = TREND_WEEKS - 1; i >= 0; i--) {
-            LocalDate mon = p.from().minusWeeks(i);
-            String wk = Period.weekKey(mon);
+        for (Period t : points) {
             List<Long> adopted = insights.stream()
-                    .filter(r -> r.adoptedAt != null && wk.equals(Period.weekKey(day(r.adoptedAt))))
+                    .filter(r -> r.adoptedAt != null && !day(r.adoptedAt).isBefore(t.from()) && !day(r.adoptedAt).isAfter(t.to()))
                     .map(r -> r.id).toList();
-            trend.add(new TrendPoint(wk, shortLabel(mon), calc.snapshot(calc.slice(all, mon, mon.plusDays(6), sc)).metrics(), adopted));
+            trend.add(new TrendPoint(t.key(), shortLabel(t), calc.snapshot(calc.slice(all, t.from(), t.to(), sc)).metrics(), adopted));
         }
-        return new Observer(weekKey, p.label(), Period.weekKey(p.from().minusWeeks(1)), Period.weekKey(p.from().plusWeeks(1)),
+        return new Observer(kind, key, p.label(), before.key(), p.next().key(),
                 sc, store.firstDay().orElse(null), metricDefs(), calc.snapshot(cur), calc.snapshot(prev),
                 calc.tools(cur), calc.slowCommands(cur, 8), calc.errors(cur, 8), calc.corrections(cur, 10),
                 calc.rework(cur, 4, 8), calc.sessions(cur, 6), calc.models(cur), trend);
@@ -250,12 +259,17 @@ public class ObserverService {
     // ───────── AI 제안 ─────────
 
     public JobService.Job submitProposals(String weekKey, String scope) {
-        Period p = Period.of("week", weekKey);
+        return submitProposals("week", weekKey, scope);
+    }
+
+    /** 기간 키(주·달·해)별로 제안을 남긴다 — agent_insight.week_key 에 그 키 */
+    public JobService.Job submitProposals(String kind, String weekKey, String scope) {
+        Period p = Period.of(kind, weekKey);
         String sc = normalizeScope(scope);
-        return jobs.submit("observer:" + weekKey, p.label() + " 에이전트 개선 제안", progress -> {
+        return jobs.submit("observer:" + kind + ":" + weekKey, p.label() + " 에이전트 개선 제안", progress -> {
             progress.update("최신 기록 수집 중");
             collector.collectAndWait();
-            Observer o = observer(weekKey, sc);
+            Observer o = observer(kind, weekKey, sc);
             progress.update("Claude 가 개선 제안 작성 중");
             String out = claude.ask(prompt(o));
             List<InsightRequest> list = parseProposals(out);
@@ -271,8 +285,8 @@ public class ObserverService {
     private String prompt(Observer o) throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("""
-                너는 Claude Code 사용 습관 코치다. 아래는 한 개발자의 이번 주 Claude Code 세션 관찰 결과다.
-                숫자와 사례를 근거로, 다음 주 작업을 빠르고 싸고 덜 틀리게 만들 개선안을 1~3개 고른다.
+                너는 AI 코딩 에이전트(Claude Code·Codex) 사용 습관 코치다. 아래는 한 개발자의 %s 에이전트 세션 관찰 결과다.
+                숫자와 사례를 근거로, 앞으로의 작업을 빠르고 싸고 덜 틀리게 만들 개선안을 1~3개 고른다.
 
                 규칙
                 - 각 개선안은 Claude 가 매 세션 읽는 md(CLAUDE.md 또는 자동 메모리)에 넣을 **짧은 규칙 문안**으로 끝나야 한다.
@@ -285,9 +299,18 @@ public class ObserverService {
                 출력은 JSON 배열 하나만(설명·코드블록 표시 없이):
                 [{"title":"한 줄 제목","problem":"근거 — 숫자 포함 1~2문장","metric":"지표 키","scope":"범위 또는 null","target":"넣을 곳 키","snippet":"- 규칙 문안"}]
 
-                """);
+                """.replace("%s", switch (o.kind()) {
+            case "month" -> "이번 달";
+            case "year" -> "올해";
+            default -> "이번 주";
+        }));
         sb.append("## 기간\n").append(o.label()).append(o.scope() == null ? "" : " · 범위 " + o.scope()).append("\n\n");
-        sb.append("## 지표 (이번 주 / 지난주 / 최근 8주 평균)\n");
+        String[] words = switch (o.kind()) {
+            case "month" -> new String[] {"이번 달", "지난달", "최근 6개월"};
+            case "year" -> new String[] {"올해", "작년", "올해 달별"};
+            default -> new String[] {"이번 주", "지난주", "최근 8주"};
+        };
+        sb.append("## 지표 (").append(words[0]).append(" / ").append(words[1]).append(" / ").append(words[2]).append(" 평균)\n");
         for (MetricDef m : o.metricDefs()) {
             Double avg = o.trend().stream().map(t -> t.metrics().get(m.key())).filter(v -> v != null)
                     .mapToDouble(Double::doubleValue).average().stream().boxed().findFirst().orElse(null);
@@ -475,9 +498,35 @@ public class ObserverService {
         return LocalDate.ofInstant(Instant.parse(isoInstant), props.zone() == null ? ZoneId.systemDefault() : props.zone());
     }
 
-    private static String shortLabel(LocalDate monday) {
-        LocalDate thu = monday.plusDays(3);
-        return "%d월 %d주".formatted(thu.getMonthValue(), (thu.getDayOfMonth() - 1) / 7 + 1);
+    /** 추이 칸들 — 주 보기 8주, 월 보기 6개월(이 달까지), 연 보기 그 해 1~12월 */
+    static List<Period> trendPoints(Period p) {
+        List<Period> out = new ArrayList<>();
+        switch (p.kind()) {
+            case "week" -> {
+                for (int i = TREND_WEEKS - 1; i >= 0; i--) {
+                    out.add(Period.containing("week", p.from().minusWeeks(i)));
+                }
+            }
+            case "month" -> {
+                for (int i = TREND_MONTHS - 1; i >= 0; i--) {
+                    out.add(Period.containing("month", p.from().minusMonths(i)));
+                }
+            }
+            default -> {
+                for (int m = 1; m <= 12; m++) {
+                    out.add(Period.containing("month", p.from().withMonth(m)));
+                }
+            }
+        }
+        return out;
+    }
+
+    private static String shortLabel(Period t) {
+        if ("week".equals(t.kind())) {
+            LocalDate thu = t.from().plusDays(3);
+            return "%d월 %d주".formatted(thu.getMonthValue(), (thu.getDayOfMonth() - 1) / 7 + 1);
+        }
+        return t.from().getMonthValue() + "월";
     }
 
     private static String fmt(Double v) {

@@ -245,7 +245,9 @@ export interface UsageBreakdown {
   models: ModelUsage[]
 }
 
-export type ReportKind = 'week' | 'month'
+export type ReportKind = 'week' | 'month' | 'year'
+/** AI 사용·리포트의 기간 단위 */
+export type PeriodKind = ReportKind
 
 export interface ReportView {
   kind: ReportKind
@@ -488,7 +490,8 @@ export interface ObsSnapshot {
 }
 
 export interface Observer {
-  week: string
+  kind: PeriodKind
+  key: string
   label: string
   prevKey: string
   nextKey: string
@@ -516,7 +519,8 @@ export interface Observer {
     longestTurnSec: number
   }[]
   models: { model: string; costUsd: number; share: number }[]
-  trend: { week: string; label: string; metrics: Record<string, number | null>; adopted: number[] }[]
+  /** 주 보기 최근 8주, 월 보기 최근 6개월, 연 보기 그 해 12개월 */
+  trend: { key: string; label: string; metrics: Record<string, number | null>; adopted: number[] }[]
 }
 
 export interface InsightTarget {

@@ -8,7 +8,7 @@ import java.time.temporal.IsoFields;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** 리포트 기간. week = ISO 주(월~일) "2026-W44", month = "2026-10" */
+/** 리포트 기간. week = ISO 주(월~일) "2026-W44", month = "2026-10", year = "2026" */
 public record Period(String kind, String key, LocalDate from, LocalDate to) {
 
     private static final Pattern WEEK = Pattern.compile("(\\d{4})-W(\\d{1,2})");
@@ -30,8 +30,34 @@ public record Period(String kind, String key, LocalDate from, LocalDate to) {
                 YearMonth ym = YearMonth.parse(key);
                 yield new Period(kind, key, ym.atDay(1), ym.atEndOfMonth());
             }
-            default -> throw new IllegalArgumentException("kind 는 week 또는 month");
+            case "year" -> {
+                if (!key.matches("\\d{4}")) {
+                    throw new IllegalArgumentException("연 형식은 2026");
+                }
+                int y = Integer.parseInt(key);
+                yield new Period(kind, key, LocalDate.of(y, 1, 1), LocalDate.of(y, 12, 31));
+            }
+            default -> throw new IllegalArgumentException("kind 는 week·month·year");
         };
+    }
+
+    /** 이 날짜가 든 같은 종류의 기간 */
+    public static Period containing(String kind, LocalDate date) {
+        return switch (kind) {
+            case "week" -> of(kind, weekKey(date));
+            case "month" -> of(kind, YearMonth.from(date).toString());
+            case "year" -> of(kind, String.valueOf(date.getYear()));
+            default -> throw new IllegalArgumentException("kind 는 week·month·year");
+        };
+    }
+
+    /** 바로 앞·뒤 같은 종류의 기간 */
+    public Period previous() {
+        return containing(kind, from.minusDays(1));
+    }
+
+    public Period next() {
+        return containing(kind, to.plusDays(1));
     }
 
     public static String weekKey(LocalDate date) {
@@ -46,10 +72,17 @@ public record Period(String kind, String key, LocalDate from, LocalDate to) {
             return "%d년 %d월 %d주차 (%s~%s)".formatted(thu.getYear(), thu.getMonthValue(), (thu.getDayOfMonth() - 1) / 7 + 1,
                     from.format(MD), from.plusDays(4).format(MD));
         }
+        if ("year".equals(kind)) {
+            return "%d년".formatted(from.getYear());
+        }
         return "%d년 %d월".formatted(from.getYear(), from.getMonthValue());
     }
 
     public String kindLabel() {
-        return "week".equals(kind) ? "주간" : "월간";
+        return switch (kind) {
+            case "week" -> "주간";
+            case "year" -> "연간";
+            default -> "월간";
+        };
     }
 }

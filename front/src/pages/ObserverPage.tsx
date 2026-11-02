@@ -3,11 +3,11 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLastJob, useRunningJob, useSettings, useStartJob } from '../api/hooks'
 import { api } from '../api/client'
-import type { Insight, InsightPatch, InsightTarget, MetricDef, Observer, ObsBreakdown } from '../api/types'
+import type { Insight, InsightPatch, InsightTarget, MetricDef, Observer, ObsBreakdown, PeriodKind } from '../api/types'
 import { Icon } from '../components/Icon'
 import { ErrorBox, Loading, ProjectLabel } from '../components/common'
 import { UsageOverviewSection } from '../components/UsageOverview'
-import { fmtDateTime, fmtDuration, fmtShort, fmtUsd, parseYmd, weekKey } from '../lib/format'
+import { PERIOD_NAME, PREV_PERIOD, THIS_PERIOD, fmtDateTime, fmtDuration, fmtShort, fmtUsd, parseYmd, periodKeyOf } from '../lib/format'
 
 // 에이전트 옵저버 — Claude 세션이 시간·토큰을 어디에 쓰는지(지표·병목) 보고,
 // 개선 규칙을 md 에 넣은 뒤 그 지표가 실제로 좋아졌는지(도입 전 14일 ↔ 도입 후 14일) 기록한다
@@ -20,15 +20,19 @@ function useScopes(): string[] {
 
 export function ObserverPage() {
   const [params, setParams] = useSearchParams()
-  const week = params.get('week') ?? weekKey(new Date())
+  // 기간 = 주·월·연. 예전 주소(?week=)도 읽는다
+  const kind: PeriodKind = params.get('p') === 'month' || params.get('p') === 'year' ? (params.get('p') as PeriodKind) : 'week'
+  const key = params.get('key') ?? (kind === 'week' ? params.get('week') : null) ?? periodKeyOf(kind)
   const scope = params.get('scope')
-  const go = (next: { week?: string; scope?: string | null }) => {
-    const p: Record<string, string> = { week: next.week ?? week }
+  const go = (next: { kind?: PeriodKind; key?: string; scope?: string | null }) => {
+    const k = next.kind ?? kind
+    const p: Record<string, string> = { key: next.key ?? (next.kind && next.kind !== kind ? periodKeyOf(k) : key) }
+    if (k !== 'week') p.p = k
     const sc = next.scope === undefined ? scope : next.scope
     if (sc) p.scope = sc
     setParams(p, { replace: true })
   }
-  const { data, isLoading, error } = useQuery({ queryKey: ['observer', week, scope], queryFn: () => api.observer(week, scope) })
+  const { data, isLoading, error } = useQuery({ queryKey: ['observer', kind, key, scope], queryFn: () => api.observer(kind, key, scope) })
   const insights = useQuery({ queryKey: ['insights'], queryFn: () => api.insights() })
 
   const scopes = useScopes()
@@ -45,25 +49,37 @@ export function ObserverPage() {
     <>
       <div className="cal-toolbar">
         <div className="nav-btns">
-          <button className="btn btn-ghost icon-btn btn-sm" onClick={() => data && go({ week: data.prevKey })} aria-label="이전 주">
+          <div className="segmented" role="tablist" aria-label="기간 단위">
+            {(['week', 'month', 'year'] as PeriodKind[]).map((k) => (
+              <button key={k} role="tab" aria-selected={kind === k} className={kind === k ? 'on' : ''} onClick={() => go({ kind: k })}>
+                {PERIOD_NAME[k]}
+              </button>
+            ))}
+          </div>
+          <button className="btn btn-ghost icon-btn btn-sm" onClick={() => data && go({ key: data.prevKey })} aria-label={`이전 ${PERIOD_NAME[kind]}`}>
             <Icon name="left" />
           </button>
-          <h2 style={{ minWidth: 260, textAlign: 'center' }}>{data?.label ?? week}</h2>
-          <button className="btn btn-ghost icon-btn btn-sm" onClick={() => data && go({ week: data.nextKey })} aria-label="다음 주">
+          <h2 style={{ minWidth: 200, textAlign: 'center' }}>{data?.label ?? key}</h2>
+          <button className="btn btn-ghost icon-btn btn-sm" onClick={() => data && go({ key: data.nextKey })} aria-label={`다음 ${PERIOD_NAME[kind]}`}>
             <Icon name="right" />
           </button>
+          {key !== periodKeyOf(kind) && (
+            <button className="btn btn-ghost btn-sm" onClick={() => go({ key: periodKeyOf(kind) })}>
+              {THIS_PERIOD[kind]}
+            </button>
+          )}
         </div>
-        <ProposeButton week={week} scope={scope} />
+        <ProposeButton kind={kind} periodKey={key} scope={scope} />
       </div>
 
-      <UsageOverviewSection week={week} scope={scope} />
+      <UsageOverviewSection kind={kind} periodKey={key} scope={scope} />
       {error && <ErrorBox error={error} />}
       {isLoading && <Loading />}
       {data && (
         <div className="ob">
           {data.current.counts.toolCalls === 0 && (
             <div className="ob-note">
-              이 주에는 도구·턴 기록이 없어요.
+              이 기간에는 도구·턴 기록이 없어요.
               {data.coverageFrom && ` 원본 세션 파일이 남아 있던 기간(${data.coverageFrom}~)만 볼 수 있어요.`}
             </div>
           )}
@@ -81,7 +97,7 @@ export function ObserverPage() {
             <CostlySessions observer={data} />
             <Rework observer={data} />
           </div>
-          <InsightSection week={week} defs={data.metricDefs} insights={insights.data} loading={insights.isLoading} />
+          <InsightSection week={key} defs={data.metricDefs} insights={insights.data} loading={insights.isLoading} />
         </div>
       )}
     </>
@@ -149,7 +165,7 @@ function MetricCards({ observer, insights }: { observer: Observer; insights: Ins
             </span>
             <b className="num">{fmtMetric(def, cur)}</b>
             <span className={`ob-mprev ${t}`}>
-              지난주 {fmtMetric(def, prev)}
+              {PREV_PERIOD[observer.kind]} {fmtMetric(def, prev)}
               {t === 'good' && ' ↓'}
               {t === 'bad' && ' ↑'}
             </span>
@@ -367,7 +383,9 @@ function CostlySessions({ observer }: { observer: Observer }) {
     <section className="card ob-card">
       <div className="ob-head">
         <h3>비용 큰 세션</h3>
-        <span className="subtle">이번 주 {fmtUsd(observer.current.counts.costUsd)} (API 환산)</span>
+        <span className="subtle">
+          {observer.label} {fmtUsd(observer.current.counts.costUsd)} (API 환산)
+        </span>
       </div>
       <table className="ob-table">
         <thead>
@@ -428,11 +446,11 @@ function Rework({ observer }: { observer: Observer }) {
 
 // ───────── 개선 제안 · 도입 · 효과 ─────────
 
-function ProposeButton({ week, scope }: { week: string; scope: string | null }) {
-  const key = `observer:${week}`
+function ProposeButton({ kind, periodKey, scope }: { kind: PeriodKind; periodKey: string; scope: string | null }) {
+  const key = `observer:${kind}:${periodKey}`
   const running = useRunningJob(key)
   const last = useLastJob(key)
-  const start = useStartJob(() => api.observerPropose(week, scope))
+  const start = useStartJob(() => api.observerPropose(kind, periodKey, scope))
   return (
     <div className="ob-propose">
       {last?.status === 'FAILED' && !running && <span className="bad" title={last.message ?? ''}>제안 실패</span>}
@@ -487,7 +505,7 @@ function InsightSection({ week, defs, insights, loading }: { week: string; defs:
       </div>
       {loading && <Loading />}
       {!loading && list.length === 0 && (
-        <div className="ob-note">아직 제안이 없어요. 위의 ‘AI 개선 제안 받기’로 이번 주 기록에서 개선안을 뽑거나, 직접 추가하세요.</div>
+        <div className="ob-note">아직 제안이 없어요. 위의 ‘AI 개선 제안 받기’로 보고 있는 기간의 기록에서 개선안을 뽑거나, 직접 추가하세요.</div>
       )}
       {GROUPS.map((g) => {
         const items = list.filter((i) => i.status === g.status)

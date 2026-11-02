@@ -290,7 +290,7 @@ public class SettingsService {
             if (t.format() == null || t.format().isBlank()) {
                 throw new IllegalArgumentException("'" + t.title().strip() + "' 양식 틀이 비었습니다");
             }
-            String kind = "month".equals(t.kind()) ? "month" : "week";
+            String kind = "month".equals(t.kind()) || "year".equals(t.kind()) ? t.kind() : "week";
             clean.add(new ReportTemplate(id, t.title().strip(), kind, t.format().stripTrailing(), blankToNull(t.guide()),
                     nonNull(t.categories())));
         }

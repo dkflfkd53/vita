@@ -151,3 +151,29 @@ export function weekLabel(key: string, withYear = false): string {
   const { year, month, n } = monthWeek(key)
   return `${withYear ? `${year}년 ` : ''}${month}월 ${n}주차`
 }
+
+/** 기간 단위 — 주·월·연 */
+export type PeriodUnit = 'week' | 'month' | 'year'
+
+export const PERIOD_NAME: Record<PeriodUnit, string> = { week: '주', month: '월', year: '년' }
+export const THIS_PERIOD: Record<PeriodUnit, string> = { week: '이번 주', month: '이번 달', year: '올해' }
+export const PREV_PERIOD: Record<PeriodUnit, string> = { week: '지난주', month: '지난달', year: '작년' }
+
+/** 이 날짜가 든 기간 키 — 2026-W44 / 2026-10 / 2026 */
+export function periodKeyOf(kind: PeriodUnit, d: Date = new Date()): string {
+  return kind === 'week' ? weekKey(d) : kind === 'month' ? monthKey(d) : String(d.getFullYear())
+}
+
+/** 기간 키 → 첫날·끝날(yyyy-MM-dd) */
+export function periodRange(kind: PeriodUnit, key: string): { from: string; to: string } {
+  if (kind === 'week') {
+    const mon = weekMonday(key)
+    return { from: ymd(mon), to: ymd(addDays(mon, 6)) }
+  }
+  if (kind === 'month') {
+    const [y, m] = key.split('-').map(Number)
+    return { from: ymd(new Date(y, m - 1, 1)), to: ymd(new Date(y, m, 0)) }
+  }
+  const y = Number(key)
+  return { from: `${y}-01-01`, to: `${y}-12-31` }
+}
