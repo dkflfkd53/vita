@@ -116,7 +116,7 @@ export function WorkItemPage() {
                 {list.map((d) => (
                   <div key={d.key} className="tl-text">
                     <span className="subtle" style={{ fontSize: 12 }}>
-                      <Link to={`/sessions/${d.taskKey}`}>{d.title}</Link>
+                      <Link to={`/sessions/${d.taskKey ?? d.sessionId}`}>{d.title}</Link>
                       {d.source && <span className={`src src-${d.source}`} style={{ marginLeft: 6 }}>{SOURCE_LABEL[d.source]}</span>}
                     </span>
                     <div className={d.summary ? '' : 'subtle'}>{d.summary ?? `요약 전 · 요청 ${d.prompts}건`}</div>

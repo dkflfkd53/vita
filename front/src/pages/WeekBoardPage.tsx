@@ -456,10 +456,15 @@ function TodoItem({
         <div className="t-sub">
           {monthWeeks.length > 0 && <span className="t-weeks">{monthWeeks.map((w) => monthWeek(w).n).join('·')}주차</span>}
           {item.sessions.slice(0, 3).map((x) => (
-            <span key={x.sessionId} className="t-sess" title={`${x.title}${x.live ? (x.busy ? ' · 작업 중' : ' · 열려 있음') : ''}`}>
+            <Link
+              key={x.sessionId}
+              to={`/sessions/${x.taskKey ?? x.sessionId}`}
+              className="t-sess"
+              title={`${x.title}${x.live ? (x.busy ? ' · 작업 중' : ' · 열려 있음') : ''} — 세션 상세 열기`}
+            >
               <span className={`dot ${x.busy ? 'busy' : x.live ? 'live' : ''}`} />
               {x.title}
-            </span>
+            </Link>
           ))}
           {item.sessions.length > 3 && <span className="t-more">+{item.sessions.length - 3}</span>}
           {memoLine && <span className="t-memo">{memoLine}</span>}
@@ -620,7 +625,8 @@ function TodoSessions({ item, board }: { item: WorkItem; board: Board }) {
             <span className={`dot ${x.busy ? 'busy' : x.live ? 'live' : ''}`} title={x.busy ? '작업 중' : x.live ? '열려 있음' : '닫힘'} />
             <div className="link-main">
               <div className="link-title">
-                {x.taskKey ? <Link to={`/sessions/${x.taskKey}`}>{x.title}</Link> : <span>{x.title}</span>}
+                {/* 숨긴 세션은 작업 묶음 키가 없어 세션 id 로 연다 */}
+                <Link to={`/sessions/${x.taskKey ?? x.sessionId}`}>{x.title}</Link>
                 <ProjectLabel project={x.project} />
                 {!x.pinned && <span className="src src-auto" title="이번 주 작업만 연결 — 앞으로의 작업은 자동으로 안 붙어요">이번 주만</span>}
                 {x.activeSec > 0 && (
@@ -822,7 +828,7 @@ function LooseRow({ u, board }: { u: UnassignedSession; board: Board }) {
       <span className="loose-dot" />
       <div className="link-main">
         <div className="link-title">
-          <Link to={`/sessions/${u.taskKey}`}>{u.title}</Link>
+          <Link to={`/sessions/${u.taskKey ?? u.sessionId}`}>{u.title}</Link>
           <ProjectLabel project={u.project} />
           {u.aiDecided && <span className="src src-auto" title="AI 가 이번 주 할 일 중 해당 없음으로 판단">AI: 해당 없음</span>}
           {u.confirmed && <span className="src src-manual">계획 외 확정</span>}
