@@ -60,8 +60,13 @@ public class ProjectScope {
         return resolve(dir, repoName, null);
     }
 
-    /** repoRoot = 작업 폴더가 속한 저장소 루트(worktree 면 원래 저장소) — 작업 폴더가 경로 규칙에 안 걸리면 이것으로 본다 */
+    /** repoRoot = 작업 폴더가 속한 저장소 루트(worktree 면 원래 저장소) — 작업 폴더가 경로 규칙에 안 걸리면 이것으로 본다. 숨긴 카테고리면 관리 밖 */
     public Optional<String> resolve(String dir, String repoName, String repoRoot) {
+        Set<String> hidden = settings.hiddenCategories();
+        return match(dir, repoName, repoRoot).filter(c -> !hidden.contains(c));
+    }
+
+    private Optional<String> match(String dir, String repoName, String repoRoot) {
         List<Rule> rules = rules();
         if (rules.isEmpty()) {
             return Optional.ofNullable(repoName);
@@ -163,7 +168,8 @@ public class ProjectScope {
     /** 규칙에 쓰인 카테고리들(화면의 범위 선택지) */
     public Set<String> labels() {
         Set<String> out = new LinkedHashSet<>();
-        settings.projects().forEach(r -> out.add(r.category()));
+        Set<String> hidden = settings.hiddenCategories();
+        settings.projects().stream().map(ProjectRule::category).filter(c -> !hidden.contains(c)).forEach(out::add);
         return out;
     }
 

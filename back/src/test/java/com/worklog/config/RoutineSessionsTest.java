@@ -29,6 +29,8 @@ class RoutineSessionsTest {
         JdbcClient jdbc = JdbcClient.create(ds);
         jdbc.sql("CREATE TABLE setting (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)").update();
         jdbc.sql("CREATE TABLE repo (root TEXT PRIMARY KEY, name TEXT NOT NULL)").update();
+        jdbc.sql("CREATE TABLE category (name TEXT PRIMARY KEY, sort INTEGER, color TEXT, subtypes TEXT, hidden INTEGER NOT NULL DEFAULT 0)").update();
+        jdbc.sql("CREATE TABLE work_item (id INTEGER PRIMARY KEY, category TEXT, subtype TEXT)").update();
         WorklogProperties props = new WorklogProperties(dir, dir, "claude", "sonnet", "haiku", null, false, ZoneId.of("Asia/Seoul"),
                 Duration.ofMinutes(15), Duration.ofMinutes(10), 0, 0, false, Map.of(), null, Map.of(), null, null);
         return new SettingsService(jdbc, props);

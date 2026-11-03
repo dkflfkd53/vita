@@ -15,7 +15,8 @@ import { PERIOD_NAME, PREV_PERIOD, THIS_PERIOD, fmtDateTime, fmtDuration, fmtSho
 /** 범위 = 설정의 "저장소 → 카테고리" 에 쓰인 카테고리(세션의 표시 이름). 표가 비면 전체만 */
 function useScopes(): string[] {
   const { data } = useSettings()
-  return [...new Set((data?.projects ?? []).map((p) => p.category))]
+  const hidden = new Set((data?.categories ?? []).filter((c) => c.hidden).map((c) => c.name))
+  return [...new Set((data?.projects ?? []).map((p) => p.category))].filter((c) => !hidden.has(c))
 }
 
 export function ObserverPage() {

@@ -100,14 +100,17 @@ public class WorkService {
 
         List<String> weeks = weeksIn(p);
         Map<Long, WorkItem> plannedMap = new LinkedHashMap<>();
-        weeks.forEach(wk -> store.itemsInWeek(wk).forEach(w -> plannedMap.putIfAbsent(w.id(), w)));
+        Set<String> hiddenCats = settings.hiddenCategories();
+        // 숨긴 카테고리의 할 일은 보드에서 통째로 뺀다
+        weeks.forEach(wk -> store.itemsInWeek(wk).stream().filter(w -> !hiddenCats.contains(w.category()))
+                .forEach(w -> plannedMap.putIfAbsent(w.id(), w)));
         Set<Long> plannedIds = plannedMap.keySet();
         Set<Long> extraIds = new HashSet<>(res.byItem.keySet());
         extraIds.removeAll(plannedIds);
         // 보드 카드는 이 기간에 계획한 할 일만. 계획에 없는 할 일에 붙은 작업(고정된 세션이 계속 일하는 경우 등)은
         // 카드로 끌어오지 않고 '이 기간 계획에 없는 할 일' 목록으로만 — 계획 외 작업(세션)으로도 보내지 않는다
         List<WorkItem> all = new ArrayList<>(plannedMap.values());
-        List<WorkItem> hiddenItems = store.items(extraIds);
+        List<WorkItem> hiddenItems = store.items(extraIds).stream().filter(w -> !hiddenCats.contains(w.category())).toList();
         List<WorkItem> known = new ArrayList<>(all);
         known.addAll(hiddenItems);
         // 뺀 할 일의 작업은 계획 외 작업으로도 안 보낸다
@@ -212,7 +215,8 @@ public class WorkService {
         store.itemsInWeek(Period.weekKey(to)).forEach(w -> plannedIds.add(w.id()));
         Set<Long> ids = new HashSet<>(plannedIds);
         ids.addAll(res.byItem.keySet());
-        List<WorkItem> loaded = store.items(ids);
+        Set<String> hiddenCats = settings.hiddenCategories();
+        List<WorkItem> loaded = store.items(ids).stream().filter(w -> !hiddenCats.contains(w.category())).toList();
         List<ItemView> items = loaded.stream()
                 .map(w -> view(w, plannedIds.contains(w.id()), res.byItem.getOrDefault(w.id(), List.of()), null, List.of()))
                 .sorted(boardOrder())

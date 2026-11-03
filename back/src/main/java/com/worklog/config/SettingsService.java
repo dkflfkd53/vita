@@ -89,8 +89,16 @@ public class SettingsService {
     }
 
     public List<Category> categories() {
-        return jdbc.sql("SELECT name, color, subtypes FROM category ORDER BY sort, name")
-                .query((rs, i) -> new Category(rs.getString(1), rs.getString(2), null, subtypesOf(rs.getString(3)))).list();
+        return jdbc.sql("SELECT name, color, subtypes, hidden FROM category ORDER BY sort, name")
+                .query((rs, i) -> new Category(rs.getString(1), rs.getString(2), null, subtypesOf(rs.getString(3)), rs.getInt(4) == 1))
+                .list();
+    }
+
+    /** 통째로 숨긴 카테고리 이름 — 세션마다 불려서 메모리에 들고 있고 카테고리를 저장할 때 다시 읽는다 */
+    @SuppressWarnings("unchecked")
+    public Set<String> hiddenCategories() {
+        return (Set<String>) cache.computeIfAbsent("hidden-categories",
+                k -> Set.copyOf(jdbc.sql("SELECT name FROM category WHERE hidden = 1").query(String.class).list()));
     }
 
     /** 카테고리 이름 → 세부 분류(있는 것만) */
@@ -194,6 +202,7 @@ public class SettingsService {
                         INSERT INTO category (name, sort, color) VALUES (?, ?, ?)
                         ON CONFLICT(name) DO UPDATE SET sort = excluded.sort, color = excluded.color
                         """).params(name, i + 1, blankToNull(c.color())).update();
+                setHidden(name, c.hidden());
                 keep.add(name);
                 continue;
             }
@@ -209,8 +218,10 @@ public class SettingsService {
                 jdbc.sql("UPDATE work_item SET subtype = NULL WHERE category = :name AND subtype IS NOT NULL AND subtype NOT IN (:subs)")
                         .param("name", name).param("subs", subs).update();
             }
+            setHidden(name, c.hidden());
             keep.add(name);
         }
+        cache.remove("hidden-categories");
         for (Category existing : categories()) {
             if (keep.contains(existing.name())) {
                 continue;
@@ -298,6 +309,13 @@ public class SettingsService {
     }
 
     // ───────── 내부 ─────────
+
+    /** null = 그대로 */
+    private void setHidden(String name, Boolean hidden) {
+        if (hidden != null) {
+            jdbc.sql("UPDATE category SET hidden = ? WHERE name = ?").params(hidden ? 1 : 0, name).update();
+        }
+    }
 
     private void renameProjectCategory(String old, String name) {
         List<ProjectRule> next = projects().stream()

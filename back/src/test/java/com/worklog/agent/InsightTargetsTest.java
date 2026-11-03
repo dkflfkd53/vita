@@ -73,6 +73,7 @@ class InsightTargetsTest {
         WorklogProperties props = new WorklogProperties(home, home.resolve("data"), "claude", "sonnet", "haiku", null, false,
                 ZoneId.of("Asia/Seoul"), Duration.ofMinutes(15), Duration.ofMinutes(10), 0, 0, false, Map.of(), null, Map.of(), null, null);
         jdbc.sql("CREATE TABLE setting (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)").update();
+        jdbc.sql("CREATE TABLE category (name TEXT PRIMARY KEY, sort INTEGER, color TEXT, subtypes TEXT, hidden INTEGER NOT NULL DEFAULT 0)").update();
         SettingsService settings = new SettingsService(jdbc, props);
         settings.saveProjects(List.of(new ProjectRule("my-app", "앱")));
         InsightTargets t = new InsightTargets(props, jdbc, new ProjectScope(settings, null, jdbc));
