@@ -275,6 +275,19 @@ function bySubtype(items: WorkItem[], subtypes: string[]): [string, WorkItem[]][
 }
 
 const UNSORTED = '미분류'
+const DONE_GROUP = '완료'
+
+/** 카테고리 카드 안 묶음 — 세부 분류가 있으면 진행 중인 할 일만 분류별로, 완료는 맨 아래 한 묶음 */
+function sectionsOf(items: WorkItem[], subtypes: string[]): [string | null, WorkItem[]][] {
+  if (subtypes.length === 0) return [[null, items]]
+  const done = items.filter((i) => i.status === 'DONE')
+  const out = bySubtype(
+    items.filter((i) => i.status !== 'DONE'),
+    subtypes,
+  ) as [string | null, WorkItem[]][]
+  if (done.length > 0) out.push([DONE_GROUP, done])
+  return out
+}
 
 function TodoGroups({ board, openId, setOpenId }: { board: Board; openId: number | null; setOpenId: (id: number | null) => void }) {
   const { data: settings } = useSettings()
@@ -306,11 +319,11 @@ function TodoGroups({ board, openId, setOpenId }: { board: Board; openId: number
               )}
             </h3>
             <div className="t-list">
-              {(subtypesOf(category).length > 0 ? bySubtype(items, subtypesOf(category)) : [[null, items] as [string | null, WorkItem[]]]).map(
+              {sectionsOf(items, subtypesOf(category)).map(
                 ([subtype, list]) => (
                   <Fragment key={subtype ?? ''}>
                     {subtype && (
-                      <div className={`t-subhead${subtype === UNSORTED ? ' unsorted' : ''}`}>
+                      <div className={`t-subhead${subtype === UNSORTED || subtype === DONE_GROUP ? ' unsorted' : ''}`}>
                         {subtype}
                         <span className="count">
                           {list.length}
