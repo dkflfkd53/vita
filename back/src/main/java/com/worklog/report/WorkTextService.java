@@ -294,7 +294,9 @@ public class WorkTextService {
             }
         }
         List<String> order = board.categories();
+        Set<String> hidden = settings.hiddenCategories();
         return out.values().stream()
+                .filter(i -> i.category() == null || !hidden.contains(i.category()))
                 .sorted(Comparator.comparingInt((ItemView i) -> {
                     int k = order.indexOf(i.category());
                     return k < 0 ? order.size() : k;
@@ -310,8 +312,9 @@ public class WorkTextService {
     /** 할 일 기준 갈래 — 걸러진 할 일의 이번 주 메모 줄(없으면 할 일 이름) */
     private String itemDraft(Part part, Board board) {
         List<String> lines = new ArrayList<>();
+        Set<String> hidden = settings.hiddenCategories();
         for (ItemView i : included(board)) {
-            if (matches(part, i)) {
+            if (matches(part, i) && (i.category() == null || !hidden.contains(i.category()))) {
                 List<String> bullets = memoBullets(i.memo(), board.key());
                 if (bullets.isEmpty()) {
                     lines.add(i.title());
@@ -361,13 +364,19 @@ public class WorkTextService {
         return words.stream().anyMatch(w -> hay.contains(w.toLowerCase(Locale.ROOT)));
     }
 
-    /** 이번 주에 실제로 작업했거나 이번 주에 끝낸 할 일만, 카테고리 순 */
+    /** 이번 주에 실제로 작업했거나 이번 주에 끝낸 할 일만, 카테고리 순. 숨긴 카테고리(개인 일 등)는 주간보고에 안 넣는다 */
     private Map<String, List<ItemView>> groups(Board board) {
         Map<String, List<ItemView>> groups = new LinkedHashMap<>();
+        Set<String> hidden = settings.hiddenCategories();
         for (String c : board.categories()) {
-            groups.put(c, new ArrayList<>());
+            if (!hidden.contains(c)) {
+                groups.put(c, new ArrayList<>());
+            }
         }
         for (ItemView i : included(board)) {
+            if (i.category() != null && hidden.contains(i.category())) {
+                continue;
+            }
             groups.computeIfAbsent(i.category() == null ? "기타" : i.category(), k -> new ArrayList<>()).add(i);
         }
         return groups;

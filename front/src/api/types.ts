@@ -587,7 +587,7 @@ export interface SettingCategory {
   oldName?: string | null
   /** 이 카테고리 할 일의 세부 분류(예: 기능개발·오류·유지보수), 비우면 없음 */
   subtypes: string[]
-  /** 통째로 숨김 — 업무 보드·세션·리포트·AI 사용에서 빠짐(기록은 남음) */
+  /** 숨김 — 업무 보드엔 보이고 세션·리포트·AI 사용·주간보고 글에서 빠짐(기록은 남음) */
   hidden: boolean
 }
 

@@ -60,13 +60,8 @@ public class ProjectScope {
         return resolve(dir, repoName, null);
     }
 
-    /** repoRoot = 작업 폴더가 속한 저장소 루트(worktree 면 원래 저장소) — 작업 폴더가 경로 규칙에 안 걸리면 이것으로 본다. 숨긴 카테고리면 관리 밖 */
+    /** repoRoot = 작업 폴더가 속한 저장소 루트(worktree 면 원래 저장소) — 작업 폴더가 경로 규칙에 안 걸리면 이것으로 본다 */
     public Optional<String> resolve(String dir, String repoName, String repoRoot) {
-        Set<String> hidden = settings.hiddenCategories();
-        return match(dir, repoName, repoRoot).filter(c -> !hidden.contains(c));
-    }
-
-    private Optional<String> match(String dir, String repoName, String repoRoot) {
         List<Rule> rules = rules();
         if (rules.isEmpty()) {
             return Optional.ofNullable(repoName);
@@ -96,6 +91,11 @@ public class ProjectScope {
             }
         }
         return Optional.empty();
+    }
+
+    /** 숨긴 카테고리 — 업무 보드에선 보이고 세션·리포트·AI 사용 화면에선 빠진다 */
+    public boolean hidden(String label) {
+        return label != null && settings.hiddenCategories().contains(label);
     }
 
     // ───────── 세션 ─────────

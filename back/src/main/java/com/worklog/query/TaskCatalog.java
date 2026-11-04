@@ -13,6 +13,8 @@ import org.springframework.stereotype.Component;
 
 import com.worklog.query.Rows.SessionRow;
 
+import com.worklog.config.ProjectScope;
+
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -26,9 +28,22 @@ public class TaskCatalog {
     private static final String UNTITLED = "(제목 없음)";
 
     private final QueryStore store;
+    private final ProjectScope scope;
 
+    /** 화면용 — 숨긴 세션·숨긴 카테고리의 세션은 뺀다 */
     public Index build() {
-        List<SessionRow> sessions = store.sessions().stream().filter(s -> !s.hidden()).toList();
+        return build(false);
+    }
+
+    /** 업무 보드용 — 숨긴 카테고리도 넣는다(숨긴 세션은 뺀다) */
+    public Index buildForWork() {
+        return build(true);
+    }
+
+    private Index build(boolean withHiddenCategories) {
+        List<SessionRow> sessions = store.sessions().stream()
+                .filter(s -> !s.hidden() && (withHiddenCategories || !scope.hidden(s.project())))
+                .toList();
         Map<String, SessionRow> byId = new HashMap<>();
         sessions.forEach(s -> byId.put(s.id(), s));
 

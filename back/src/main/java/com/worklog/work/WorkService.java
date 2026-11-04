@@ -95,22 +95,20 @@ public class WorkService {
     /** 주·월 공통. 월이면 그 달에 걸친 주들의 계획을 합치고, 시간·사용량·연결은 그 달 안만 센다 */
     private Board board(Period p) {
         Ctx ctx = ctx();
-        List<SessionDayRef> refs = query.sessionDayRefs(p.from(), p.to());
+        List<SessionDayRef> refs = query.sessionDayRefs(p.from(), p.to(), true);
         Resolution res = resolve(refs, store.allLinks(), store.pins(), store.pinStarts(), ctx.index.taskOfSession(), plannedOn());
 
         List<String> weeks = weeksIn(p);
         Map<Long, WorkItem> plannedMap = new LinkedHashMap<>();
-        Set<String> hiddenCats = settings.hiddenCategories();
-        // 숨긴 카테고리의 할 일은 보드에서 통째로 뺀다
-        weeks.forEach(wk -> store.itemsInWeek(wk).stream().filter(w -> !hiddenCats.contains(w.category()))
-                .forEach(w -> plannedMap.putIfAbsent(w.id(), w)));
+        // 숨긴 카테고리도 업무 보드에선 보인다(세션·리포트·AI 사용 화면에서만 빠짐)
+        weeks.forEach(wk -> store.itemsInWeek(wk).forEach(w -> plannedMap.putIfAbsent(w.id(), w)));
         Set<Long> plannedIds = plannedMap.keySet();
         Set<Long> extraIds = new HashSet<>(res.byItem.keySet());
         extraIds.removeAll(plannedIds);
         // 보드 카드는 이 기간에 계획한 할 일만. 계획에 없는 할 일에 붙은 작업(고정된 세션이 계속 일하는 경우 등)은
         // 카드로 끌어오지 않고 '이 기간 계획에 없는 할 일' 목록으로만 — 계획 외 작업(세션)으로도 보내지 않는다
         List<WorkItem> all = new ArrayList<>(plannedMap.values());
-        List<WorkItem> hiddenItems = store.items(extraIds).stream().filter(w -> !hiddenCats.contains(w.category())).toList();
+        List<WorkItem> hiddenItems = store.items(extraIds);
         List<WorkItem> known = new ArrayList<>(all);
         known.addAll(hiddenItems);
         // 뺀 할 일의 작업은 계획 외 작업으로도 안 보낸다
@@ -230,8 +228,8 @@ public class WorkService {
     public ItemDetail detail(long id) {
         WorkItem item = store.item(id).orElseThrow(() -> new IllegalArgumentException("업무가 없음: " + id));
         LocalDate today = LocalDate.now(props.zone());
-        List<SessionDayRef> refs = query.sessionDayRefs(LocalDate.parse("2000-01-01"), today);
-        Resolution res = resolve(refs, store.allLinks(), store.pins(), store.pinStarts(), catalog.build().taskOfSession(), plannedOn());
+        List<SessionDayRef> refs = query.sessionDayRefs(LocalDate.parse("2000-01-01"), today, true);
+        Resolution res = resolve(refs, store.allLinks(), store.pins(), store.pinStarts(), catalog.buildForWork().taskOfSession(), plannedOn());
         List<LinkedDay> days = new ArrayList<>(res.byItem.getOrDefault(id, List.of()));
         days.sort(Comparator.comparing(LinkedDay::day).reversed());
         int activeDays = (int) days.stream().map(LinkedDay::day).distinct().count();
@@ -241,8 +239,8 @@ public class WorkService {
     /** 세션 목록을 할 일별로 묶기 위한 작업 → 할 일 대응. 화면에 보이는 모든 작업이 한 줄씩 */
     public List<TaskWork> taskWork() {
         LocalDate today = LocalDate.now(props.zone());
-        TaskCatalog.Index index = catalog.build();
-        List<SessionDayRef> refs = query.sessionDayRefs(LocalDate.parse("2000-01-01"), today);
+        TaskCatalog.Index index = catalog.buildForWork();
+        List<SessionDayRef> refs = query.sessionDayRefs(LocalDate.parse("2000-01-01"), today, true);
         Resolution res = resolve(refs, store.allLinks(), store.pins(), store.pinStarts(), index.taskOfSession(), plannedOn());
         Map<String, String> lastDay = new HashMap<>();
         Map<String, Long> lastItem = new HashMap<>();
@@ -558,8 +556,8 @@ public class WorkService {
         store.item(itemId).orElseThrow(() -> new IllegalArgumentException("할 일이 없음: " + itemId));
         // 이 기간의 지난 날들은 아래에서 직접 연결로 남기고, 고정은 오늘부터 — 그 전 작업으로 소급하지 않는다
         store.pin(sessionId, itemId, LocalDate.now(props.zone()).toString());
-        String task = catalog.build().taskOfSession().getOrDefault(sessionId, sessionId);
-        for (SessionDayRef r : query.sessionDayRefs(period.from(), period.to())) {
+        String task = catalog.buildForWork().taskOfSession().getOrDefault(sessionId, sessionId);
+        for (SessionDayRef r : query.sessionDayRefs(period.from(), period.to(), true)) {
             // 같은 작업 묶음(이어진 앞 세션 등)의 이 기간 작업도 함께
             if (r.sessionId().equals(sessionId) || task.equals(r.taskKey())) {
                 store.saveManualLink(r.sessionId(), r.day(), itemId);
@@ -574,7 +572,7 @@ public class WorkService {
     /** 떼어 낼 때도 묶음 전체 — 하나만 떼면 남은 세션의 연결을 다시 이어받아 돌아온다 */
     @Transactional
     public void detachSession(long itemId, String sessionId) {
-        TaskCatalog.Index index = catalog.build();
+        TaskCatalog.Index index = catalog.buildForWork();
         String task = index.taskOfSession().getOrDefault(sessionId, sessionId);
         store.unlinkSession(sessionId, itemId);
         index.taskOfSession().forEach((sid, t) -> {
@@ -588,7 +586,7 @@ public class WorkService {
     public List<SessionCandidate> candidates(Period week) {
         Ctx ctx = ctx();
         Map<String, Long> weekSec = new HashMap<>();
-        query.sessionDayRefs(week.from(), week.to())
+        query.sessionDayRefs(week.from(), week.to(), true)
                 .forEach(r -> weekSec.merge(r.sessionId(), r.activeSec(), Long::sum));
         Map<Long, String> itemTitles = new HashMap<>();
         store.items(new HashSet<>(ctx.pins.values())).forEach(w -> itemTitles.put(w.id(), w.title()));
@@ -638,7 +636,7 @@ public class WorkService {
         liveSessions.list().stream()
                 .filter(l -> rows.containsKey(l.sessionId()) || scope.labelForCwd(l.cwd()).isPresent())
                 .forEach(l -> live.putIfAbsent(l.sessionId(), l));
-        return new Ctx(store.pins(), live, catalog.build(), rows);
+        return new Ctx(store.pins(), live, catalog.buildForWork(), rows);
     }
 
     /** 보드 한 번 그리는 동안 쓰는 세션 정보 묶음 */

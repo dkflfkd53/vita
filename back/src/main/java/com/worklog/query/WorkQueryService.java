@@ -90,7 +90,7 @@ public class WorkQueryService {
         // 같은 작업 묶음(이어진 세션 등)을 연 프로세스가 여럿이면 한 줄로 — 가장 최근에 움직인 것을 보이고 개수만 단다
         Map<String, List<LiveSession>> liveByTask = new LinkedHashMap<>();
         live.stream()
-                .filter(l -> index.taskOf(l.sessionId()) != null || scope.labelForCwd(l.cwd()).isPresent())
+                .filter(l -> index.taskOf(l.sessionId()) != null || scope.labelForCwd(l.cwd()).filter(c -> !scope.hidden(c)).isPresent())
                 .forEach(l -> {
                     Task task = index.taskOf(l.sessionId());
                     liveByTask.computeIfAbsent(task != null ? task.key() : l.sessionId(), k -> new ArrayList<>()).add(l);
@@ -236,7 +236,8 @@ public class WorkQueryService {
 
     /** key = 작업 묶음 키. 숨긴 세션은 묶음에서 빠져 있어, 그 세션 id 면 세션 하나로 상세를 만든다 */
     public TaskDetail task(String key) {
-        Index index = catalog.build();
+        // 업무 보드에서 숨긴 카테고리 세션으로도 들어오므로 그것까지 찾는다
+        Index index = catalog.buildForWork();
         Task task = index.tasks().get(key);
         boolean hidden = false;
         if (task == null) {
@@ -375,9 +376,14 @@ public class WorkQueryService {
                 models, days);
     }
 
-    /** from~to 의 보이는 세션×날짜. 업무 보드·분류가 쓴다 */
+    /** from~to 의 보이는 세션×날짜(숨긴 카테고리 빼고). 기간 리포트가 쓴다 */
     public List<SessionDayRef> sessionDayRefs(LocalDate from, LocalDate to) {
-        Index index = catalog.build();
+        return sessionDayRefs(from, to, false);
+    }
+
+    /** forWork = 업무 보드·분류용 — 숨긴 카테고리 세션도 넣는다 */
+    public List<SessionDayRef> sessionDayRefs(LocalDate from, LocalDate to, boolean forWork) {
+        Index index = forWork ? catalog.buildForWork() : catalog.build();
         Map<String, SessionRow> sessions = new HashMap<>();
         index.tasks().values().forEach(t -> t.sessions().forEach(s -> sessions.put(s.id(), s)));
         UsageService.Index u = usage.index(from, to);

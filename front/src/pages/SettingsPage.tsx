@@ -140,7 +140,7 @@ function Categories({ data }: { data: SettingsAll }) {
   return (
     <Section
       title="카테고리"
-      hint="할 일을 묶는 큰 단위(예: 프로젝트 A, 프로젝트 B, 기타). 순서대로 업무 화면·사이드바·주간보고에 나와요. 이름을 바꾸면 할 일도 따라 바뀌어요. 세부 분류를 적으면(예: 기능개발, 오류, 유지보수) 그 카테고리 할 일을 분류별로 묶어 보여 주고, 주간보고 글도 분류별로 나눠 써요. '숨김'으로 두면 그 카테고리의 할 일·세션·커밋이 업무·세션·리포트·AI 사용에서 통째로 빠져요(기록은 남아 풀면 다시 보여요)."
+      hint="할 일을 묶는 큰 단위(예: 프로젝트 A, 프로젝트 B, 기타). 순서대로 업무 화면·사이드바·주간보고에 나와요. 이름을 바꾸면 할 일도 따라 바뀌어요. 세부 분류를 적으면(예: 기능개발, 오류, 유지보수) 그 카테고리 할 일을 분류별로 묶어 보여 주고, 주간보고 글도 분류별로 나눠 써요. '숨김'으로 두면 업무 보드엔 그대로 보이고, 세션·리포트·AI 사용·주간보고 글·사이드바 실행 중 세션에서 빠져요(기록은 남아 풀면 다시 보여요)."
       dirty={dirty}
       onSave={() =>
         api.saveCategories(
@@ -168,7 +168,7 @@ function Categories({ data }: { data: SettingsAll }) {
               className={`btn btn-ghost btn-sm st-hide${c.hidden ? ' on' : ''}`}
               onClick={() => set(i, { hidden: !c.hidden })}
               aria-pressed={c.hidden}
-              title={c.hidden ? '숨김 풀기 — 다시 업무·세션·리포트·AI 사용에 보여요' : '숨기기 — 업무·세션·리포트·AI 사용에서 빠져요(기록은 남음)'}
+              title={c.hidden ? '숨김 풀기 — 세션·리포트·AI 사용에 다시 보여요' : '숨기기 — 업무 보드엔 보이고 세션·리포트·AI 사용·주간보고 글에서 빠져요(기록은 남음)'}
             >
               <Icon name={c.hidden ? 'eyeOff' : 'eye'} size={13} /> {c.hidden ? '숨김' : '보임'}
             </button>

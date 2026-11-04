@@ -44,7 +44,7 @@ Windows 에서 새로 설치했으면 PATH 가 새 터미널에서만 잡히므�
 2. **카테고리**: 할 일을 어떤 큰 단위로 나누는지 묻는다(예: 회사 프로젝트별, 개인). 기본값은 `업무`, `기타`.
    `PUT /api/settings/categories` 본문 = 순서대로 `[{"name":"프로젝트 A","color":"blue","oldName":"업무"},{"name":"기타","color":null,"oldName":"기타"}]`.
    `oldName` 은 기존 카테고리 이름을 바꿀 때만(할 일도 따라 바뀜). 색: gray·blue·green·yellow·red·purple·orange·teal·pink 또는 null(자동).
-   (선택) `"hidden":true` = 그 카테고리를 통째로 숨김(업무·세션·리포트·AI 사용에서 빠짐, 기록은 남음). 빼고 보내면 있던 값 유지.
+   (선택) `"hidden":true` = 그 카테고리 숨김(업무 보드엔 보이고 세션·리포트·AI 사용·주간보고 글에서 빠짐, 기록은 남음). 빼고 보내면 있던 값 유지.
    (선택) `"subtypes":["기능개발","오류","유지보수"]` = 그 카테고리 안 세부 분류(업무 화면·주간보고 글이 분류별로 묶임). 빼고 보내면 있던 값 유지. 채운 뒤 `POST /api/work-items/subtypes/fill` 로 기존 할 일을 AI 가 분류.
 3. **폴더 → 카테고리**: `knownFolders`(본 저장소와 그 상위 폴더)를 보여 주고 어느 폴더 아래가 어느 카테고리인지 묻는다.
    `PUT /api/settings/projects` 본문 = `[{"repo":"~/work/acme","category":"프로젝트 A"},{"repo":"my-app","category":"기타"}]`.

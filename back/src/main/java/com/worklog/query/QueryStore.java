@@ -117,7 +117,9 @@ public class QueryStore {
 
     /** 커밋의 저장소 → 카테고리(관리 대상이 아니면 빈 값). 저장소마다 한 번만 판정 */
     private Optional<String> repoLabel(Map<String, Optional<String>> cache, String repo) {
-        return cache.computeIfAbsent(repo, r -> scope.managedRepo(r) ? Optional.of(scope.repoLabel(r)) : Optional.empty());
+        // 숨긴 카테고리의 커밋은 세션·리포트 화면에서 뺀다
+        return cache.computeIfAbsent(repo, r -> scope.managedRepo(r) && !scope.hidden(scope.repoLabel(r))
+                ? Optional.of(scope.repoLabel(r)) : Optional.empty());
     }
 
     /** 관리 대상 커밋을 저장소 이름 그대로(같은 카테고리 안 저장소를 나눠 볼 때) */

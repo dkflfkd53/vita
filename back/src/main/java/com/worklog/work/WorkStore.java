@@ -28,7 +28,7 @@ public class WorkStore {
     private final JdbcClient jdbc;
 
     public List<String> categories() {
-        return jdbc.sql("SELECT name FROM category WHERE hidden = 0 ORDER BY sort, name").query(String.class).list();
+        return jdbc.sql("SELECT name FROM category ORDER BY sort, name").query(String.class).list();
     }
 
     public void addCategory(String name) {

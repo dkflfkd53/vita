@@ -152,7 +152,7 @@ public class ClassifyService {
         store.links(week.from().toString(), to.toString()).forEach(l -> links.put(l.key(), l));
         Map<String, Long> pins = store.pins();
         Map<String, String> pinFrom = store.pinStarts();
-        return query.sessionDayRefs(week.from(), to).stream()
+        return query.sessionDayRefs(week.from(), to, true).stream()
                 .filter(r -> r.prompts() > 0 || r.summary() != null)
                 .filter(r -> !routines.isRoutine(r.title())) // 배포 같은 반복 업무는 분류하지 않는다
                 // 고정된 세션도 고정 시작일 전 작업은 분류 대상

@@ -52,7 +52,10 @@ class CategorySubtypesTest {
         ds.setUrl("jdbc:sqlite:" + dir.resolve("t.db"));
         ProjectScope scope = new ProjectScope(s, null, JdbcClient.create(ds));
         assertThat(scope.resolve("/work/acme/api", "api")).contains("회사");
-        assertThat(scope.resolve("/home/me/toy/game", "game")).isEmpty(); // 숨긴 카테고리 → 관리 밖
+        // 숨긴 카테고리도 관리 대상(업무 보드엔 보임), 세션·리포트 화면과 AI 사용 범위에서만 빠진다
+        assertThat(scope.resolve("/home/me/toy/game", "game")).contains("개인");
+        assertThat(scope.hidden("개인")).isTrue();
+        assertThat(scope.hidden("회사")).isFalse();
         assertThat(scope.labels()).containsExactly("회사");
 
         // hidden 을 안 보낸 저장은 숨김을 그대로 둔다, false 로 보내면 풀린다
