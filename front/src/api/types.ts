@@ -619,6 +619,8 @@ export interface WorkTextPartDef {
 export interface WorkTextConfig {
   full: WorkTextPartDef
   parts: WorkTextPartDef[]
+  /** AI 가 중요한 부분 몇 곳만 **굵게** — null 이면 켬 */
+  bold: boolean | null
 }
 
 /** 리포트 양식 — 리포트 화면의 버튼 하나. format 틀대로 AI 가 채운다 */

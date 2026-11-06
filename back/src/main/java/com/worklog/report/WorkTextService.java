@@ -53,6 +53,13 @@ public class WorkTextService {
 
     private static final String I1 = "    ";
     private static final String I2 = "        ";
+    /** 중요한 부분만 굵게 — 복사하면 화면이 서식(HTML)으로 붙인다 */
+    static final String BOLD_RULE = """
+
+                - 정말 중요한 부분만 **굵게**: 구역(갈래)마다 따로 — 전체 업무 내용은 2~5곳, 짧은 요약·차주 계획은 1~3곳.
+                  핵심 성과·결정·수치·임박한 마감(예: **7초→0.02초**, **운영 배포 완료**, **~11/9 마감**)처럼 짧은 구절만 **…** 로 감싼다.
+                  업무명·문장 전체·머리 줄([업무 내용] 등)·카테고리 줄은 감싸지 않는다. 빈 구역은 비워 둔다""";
+
     /** 세부 분류가 있는 카테고리에서 분류를 안 고른 할 일 */
     static final String UNSORTED = "미분류";
     private static final Pattern GITMOJI = Pattern.compile("^\\S*\\s*(\\w+)(\\([^)]*\\))?!?:\\s*");
@@ -200,7 +207,7 @@ public class WorkTextService {
                     sb.append(I1).append("- ").append(s.getKey()).append('\n');
                 }
                 for (ItemView i : s.getValue()) {
-                    sb.append(pad).append(I1).append("- ").append(i.title()).append('\n');
+                    sb.append(pad).append(I1).append("- ").append(i.title()).append(due(i)).append('\n');
                     for (String b : memoBullets(i.memo(), board.key())) {
                         sb.append(pad).append(I2).append("- ").append(b).append('\n');
                     }
@@ -244,7 +251,7 @@ public class WorkTextService {
         if (shortForm(part)) {
             StringBuilder sb = new StringBuilder();
             nextItems(board).stream().filter(i -> matches(part, i)).limit(maxLines(part))
-                    .forEach(i -> sb.append("- ").append(i.title()).append(i.dueDate() == null ? "" : " (~" + mmdd(i.dueDate()) + ")").append('\n'));
+                    .forEach(i -> sb.append("- ").append(i.title()).append(due(i)).append('\n'));
             return sb.toString();
         }
         Map<String, List<ItemView>> groups = new LinkedHashMap<>();
@@ -269,7 +276,7 @@ public class WorkTextService {
                 }
                 for (ItemView i : s.getValue()) {
                     sb.append(pad).append(I1).append("- ").append(i.title())
-                            .append(i.dueDate() == null ? "" : " (~" + mmdd(i.dueDate()) + ")").append('\n');
+                            .append(due(i)).append('\n');
                 }
             }
         }
@@ -302,6 +309,11 @@ public class WorkTextService {
                     return k < 0 ? order.size() : k;
                 }))
                 .toList();
+    }
+
+    /** 업무명 뒤 마감 표시 " (~11/14 마감)", 없으면 빈칸 */
+    static String due(ItemView i) {
+        return i.dueDate() == null ? "" : " (~" + mmdd(i.dueDate()) + " 마감)";
     }
 
     private static String mmdd(String date) {
@@ -472,6 +484,7 @@ public class WorkTextService {
                         .append(tags.isEmpty() ? "" : " (" + String.join(", ", tags) + " 해당)")
                         .append(subtypeTag(i, subtypes))
                         .append(" | 상태 ").append(statusKo(i.status()))
+                        .append(i.dueDate() == null ? "" : " | 마감 " + i.dueDate())
                         .append(" | 이번 주 작업 ").append(ReportService.hours(i.activeSec())).append("시간\n");
                 if (i.memo() != null && !i.memo().isBlank()) {
                     in.append("  메모:\n");
@@ -562,6 +575,9 @@ public class WorkTextService {
                 - 보고서체 명사형 종결(~ 추가 및 배포, ~ 분석 및 개선안 도출, ~ 작성, ~ 예정). "~함/~했다/~요" 금지
                 - 구어 표현은 업무 용어로 바꾼다(예: "느린 거 고침" → "조회 성능 개선")
                 - 원인·결과·수치(시간, 건수, 진행률)는 살린다. 이번 주에 한 일만 쓴다(메모의 다른 주 내용은 쓰지 않는다).
+                - 입력에 마감이 있는 업무는 그 업무 줄의 업무명 뒤 괄호에 마감을 꼭 넣는다(이 규칙이 갈래 지시·예시보다 우선):
+                  "(~11/14 마감)", 요청자·진행률도 있으면 "(○○님 요청, ~11/14 마감)". 짧은 요약 줄은 줄 끝에 "(~11/14 마감)".
+                  마감이 없는 업무에는 지어 넣지 않는다%s
                   단 차주 계획 갈래는 다음 주에 할 일만 쓴다(~ 예정, ~ 진행 등 계획 표현)
                 - 입력에 [세부 분류]가 있으면(이 규칙이 갈래 지시·예시보다 우선): 그 카테고리는 카테고리 줄 아래에 분류 줄 "- 분류명"을
                   한 단계 끼우고, 그 아래 업무·세부를 한 단계씩 더 들여쓴다(공백 4칸 단위). 분류는 [세부 분류] 순서, 업무의 분류는 입력의
@@ -572,7 +588,7 @@ public class WorkTextService {
                 [문체·형식 예시]%s
                 ---
                 %s
-                """.formatted(p.label(), SummaryService.RULES, spec,
+                """.formatted(p.label(), SummaryService.RULES, settings.workText().boldOn() ? BOLD_RULE : "", spec,
                 multi ? " 구역 표시(" + String.join(", ", parts.stream().map(Part::mark).toList()) + ")는 각 구역 첫 줄에 그대로 쓴다." : "",
                 examples, input);
     }
@@ -584,7 +600,7 @@ public class WorkTextService {
         }
         if (part.next()) {
             return "입력의 [차주 계획 후보] 중 \"(" + part.title() + " 해당)\" 표시가 있는 것으로 다음 주에 할 일. 첫 줄 \"[" + part.title()
-                    + "]\", 빈 줄, 그다음 카테고리마다 \"- 카테고리\"(4칸 들여쓰기 업무 \"- 업무명 (마감 M/D 또는 진행률)\", 8칸 세부 0~2줄). "
+                    + "]\", 빈 줄, 그다음 카테고리마다 \"- 카테고리\"(4칸 들여쓰기 업무 \"- 업무명 (~M/D 마감, 있으면 진행률)\", 8칸 세부 0~2줄). "
                     + "세부는 메모·최근 작업에서 아직 남은 일, 이어서 할 일만 \"~ 예정\" 체로. 근거가 없으면 세부 없이 업무명만. 완료된 일·이번 주 실적은 쓰지 않는다. "
                     + "해당하는 할 일이 하나도 없으면 아무것도 쓰지 않는다(빈칸)";
         }

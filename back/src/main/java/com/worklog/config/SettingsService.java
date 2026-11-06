@@ -144,8 +144,8 @@ public class SettingsService {
 
     public WorkTextConfig workText() {
         return (WorkTextConfig) cache.computeIfAbsent("work-text", k -> read(k, new TypeReference<WorkTextConfig>() { })
-                .map(c -> new WorkTextConfig(c.full() == null ? DEFAULT_FULL : c.full(), c.parts() == null ? List.of() : c.parts()))
-                .orElse(new WorkTextConfig(DEFAULT_FULL, List.of())));
+                .map(c -> new WorkTextConfig(c.full() == null ? DEFAULT_FULL : c.full(), c.parts() == null ? List.of() : c.parts(), c.bold()))
+                .orElse(new WorkTextConfig(DEFAULT_FULL, List.of(), null)));
     }
 
     @SuppressWarnings("unchecked")
@@ -283,7 +283,7 @@ public class SettingsService {
                     nonNull(p.repos()), p.maxLines() == null || p.maxLines() < 1 ? 3 : Math.min(p.maxLines(), 12),
                     blankToNull(p.guide()), blankToNull(p.example())));
         }
-        write("work-text", new WorkTextConfig(full, parts));
+        write("work-text", new WorkTextConfig(full, parts, config.bold() == null ? workText().bold() : config.bold()));
     }
 
     /** 목록 순서가 곧 리포트 화면 버튼 순서 */

@@ -37,7 +37,12 @@ public final class Settings {
                                List<String> repos, Integer maxLines, String guide, String example) {
     }
 
-    public record WorkTextConfig(WorkTextPart full, List<WorkTextPart> parts) {
+    /** bold = AI 가 중요한 부분 몇 곳만 **굵게** 표시(복사하면 서식으로 붙는다). null 이면 켬 */
+    public record WorkTextConfig(WorkTextPart full, List<WorkTextPart> parts, Boolean bold) {
+
+        public boolean boldOn() {
+            return bold == null || bold;
+        }
     }
 
     /**
