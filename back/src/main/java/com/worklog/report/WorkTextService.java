@@ -165,18 +165,22 @@ public class WorkTextService {
                 return p.label() + " " + one.title() + " 완료";
             }
             List<Part> targets = new ArrayList<>();
+            List<String> skipped = new ArrayList<>();
             for (Part pt : parts()) {
                 boolean manual = store.report(pt.kind(), weekKey).map(r -> "manual".equals(r.model())).orElse(false);
-                if (!manual) {
+                if (manual) {
+                    skipped.add(pt.title());
+                } else {
                     targets.add(pt);
                 }
             }
+            String skip = skipped.isEmpty() ? "" : " · 직접 고친 " + String.join(", ", skipped) + "은(는) 그대로 — 그 탭에서 'AI로 다듬기'로 다시 쓸 수 있어요";
             if (targets.isEmpty()) {
-                return "모두 직접 고친 글이라 건너뜀";
+                return "모두 직접 고친 글이라 건너뜀" + skip;
             }
             Map<Part, String> out = split(claude.ask(prompt(p, input, targets)), targets);
             out.forEach((pt, text) -> store.saveReport(pt.kind(), weekKey, text, claude.model()));
-            return p.label() + " 업무 내용 " + out.size() + "개 완료";
+            return out.size() + "개 다시 씀" + skip;
         });
     }
 

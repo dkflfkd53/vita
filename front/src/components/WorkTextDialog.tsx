@@ -34,6 +34,9 @@ function WorkTextEditor({ week, onClose }: { week: string; onClose: () => void }
 
   const running = jobs?.find((j) => j.key.startsWith(`worktext:${week}:`) && (j.status === 'QUEUED' || j.status === 'RUNNING'))
   const failed = jobs?.find((j) => j.key.startsWith(`worktext:${week}:`) && j.status === 'FAILED')
+  // '모두 AI로' 가 직접 고친 탭을 건너뛰었으면 알려 준다
+  const lastAll = jobs?.find((j) => j.key === `worktext:${week}:all`)
+  const skippedNote = lastAll?.status === 'DONE' && lastAll.message?.includes('직접 고친') ? lastAll.message : null
   const part: WorkTextPart | undefined = data?.parts.find((p) => p.part === tab)
 
   // 서버 글(초안·AI 결과)이 바뀌면 받아온다 — 고치는 중인 탭은 덮지 않는다
@@ -157,6 +160,7 @@ function WorkTextEditor({ week, onClose }: { week: string; onClose: () => void }
           복사하면 굵게 붙어요.
         </span>
       </div>
+      {skippedNote && !running && <div className="dlg-note">{skippedNote}</div>}
       {failed && !running && (
         <div className="error-box" style={{ margin: '0 18px 10px' }}>
           AI 작성 실패: {failed.message}
