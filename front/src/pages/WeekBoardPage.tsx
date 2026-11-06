@@ -277,14 +277,16 @@ function bySubtype(items: WorkItem[], subtypes: string[]): [string, WorkItem[]][
 const UNSORTED = '미분류'
 const DONE_GROUP = '완료'
 
-/** 카테고리 카드 안 묶음 — 세부 분류가 있으면 진행 중인 할 일만 분류별로, 완료는 맨 아래 한 묶음 */
+/**
+ * 카테고리 카드 안 묶음 — 세부 분류가 있으면 분류 머리 줄을 늘 설정 순서대로(진행 중인 할 일이 없어도 머리 줄은 보임),
+ * 그 아래 진행 중인 할 일, 완료는 맨 아래 한 묶음
+ */
 function sectionsOf(items: WorkItem[], subtypes: string[]): [string | null, WorkItem[]][] {
   if (subtypes.length === 0) return [[null, items]]
   const done = items.filter((i) => i.status === 'DONE')
-  const out = bySubtype(
-    items.filter((i) => i.status !== 'DONE'),
-    subtypes,
-  ) as [string | null, WorkItem[]][]
+  const active = new Map(bySubtype(items.filter((i) => i.status !== 'DONE'), subtypes))
+  const out: [string | null, WorkItem[]][] = subtypes.map((s) => [s, active.get(s) ?? []])
+  if (active.has(UNSORTED)) out.push([UNSORTED, active.get(UNSORTED)!])
   if (done.length > 0) out.push([DONE_GROUP, done])
   return out
 }
@@ -328,6 +330,7 @@ function TodoGroups({ board, openId, setOpenId }: { board: Board; openId: number
                         <span className="count">
                           {list.length}
                           {list.some((i) => i.activeSec > 0) && ` · ${fmtShort(list.reduce((t, i) => t + i.activeSec, 0))}`}
+                          {list.length === 0 && ' · 진행 중 없음'}
                         </span>
                       </div>
                     )}

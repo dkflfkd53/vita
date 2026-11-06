@@ -31,6 +31,7 @@ import com.worklog.summary.JobService;
 import com.worklog.summary.SummaryService;
 import com.worklog.work.WorkService;
 import com.worklog.work.WorkViews.Board;
+import com.worklog.work.WorkViews.ItemSession;
 import com.worklog.work.WorkViews.ItemView;
 
 import lombok.RequiredArgsConstructor;
@@ -211,7 +212,7 @@ public class WorkTextService {
                     sb.append(I1).append("- ").append(s.getKey()).append('\n');
                 }
                 for (ItemView i : s.getValue()) {
-                    sb.append(pad).append(I1).append("- ").append(i.title()).append(due(i)).append('\n');
+                    sb.append(pad).append(I1).append("- ").append(reportName(i)).append(tag(i)).append('\n');
                     for (String b : memoBullets(i.memo(), board.key())) {
                         sb.append(pad).append(I2).append("- ").append(b).append('\n');
                     }
@@ -255,7 +256,7 @@ public class WorkTextService {
         if (shortForm(part)) {
             StringBuilder sb = new StringBuilder();
             nextItems(board).stream().filter(i -> matches(part, i)).limit(maxLines(part))
-                    .forEach(i -> sb.append("- ").append(i.title()).append(due(i)).append('\n'));
+                    .forEach(i -> sb.append("- ").append(reportName(i)).append(tag(i)).append('\n'));
             return sb.toString();
         }
         Map<String, List<ItemView>> groups = new LinkedHashMap<>();
@@ -279,8 +280,8 @@ public class WorkTextService {
                     sb.append(I1).append("- ").append(s.getKey()).append('\n');
                 }
                 for (ItemView i : s.getValue()) {
-                    sb.append(pad).append(I1).append("- ").append(i.title())
-                            .append(due(i)).append('\n');
+                    sb.append(pad).append(I1).append("- ").append(reportName(i))
+                            .append(tag(i)).append('\n');
                 }
             }
         }
@@ -313,6 +314,41 @@ public class WorkTextService {
                     return k < 0 ? order.size() : k;
                 }))
                 .toList();
+    }
+
+    private static final Pattern WEAK_NAME = Pattern.compile("(?i).*(\\d+|ver\\s*\\d+|v\\d+)$");
+    private static final Pattern TRAILING_PERSON = Pattern.compile("\\s*\\(\\s*[가-힣]{2,4}(님)?\\s*\\)?$");
+    private static final Pattern REQUESTER = Pattern.compile("([가-힣]{2,4}(?: [가-힣]{1,3})?님)");
+
+    /**
+     * 주간보고 글의 업무명 — 할 일 이름은 대충 적은 것("김철수님 요구사항2")이라 가장 오래 일한 연결 세션 이름을 쓴다.
+     * 세션이 없거나 세션 이름이 "…2"·"ver2" 처럼 이름 구실을 못 하면 할 일 이름. 세션 이름 끝의 "(김철수)" 같은 사람 이름은 뺀다
+     */
+    static String reportName(ItemView i) {
+        return i.sessions().stream().max(Comparator.comparingLong(ItemSession::activeSec))
+                .map(s -> TRAILING_PERSON.matcher(s.title().strip()).replaceFirst(""))
+                .filter(t -> t.length() >= 4 && !WEAK_NAME.matcher(t).matches())
+                .orElse(i.title());
+    }
+
+    /** 할 일 이름의 요청자("김철수님", "홍길동 상무님") */
+    static String requester(ItemView i) {
+        Matcher m = REQUESTER.matcher(i.title());
+        return m.find() ? m.group(1) : null;
+    }
+
+    /** 업무명 뒤 괄호 — "(김철수님 요청, ~11/4 완료)", 요청자·완료/마감 중 있는 것만 */
+    static String tag(ItemView i) {
+        List<String> parts = new ArrayList<>();
+        String who = requester(i);
+        if (who != null && !reportName(i).contains(who)) {
+            parts.add(who + " 요청");
+        }
+        String d = due(i).strip();
+        if (!d.isEmpty()) {
+            parts.add(d.substring(1, d.length() - 1));
+        }
+        return parts.isEmpty() ? "" : " (" + String.join(", ", parts) + ")";
     }
 
     /** 업무명 뒤 표시 — 완료면 완료일 " (~11/5 완료)", 아니면 마감 " (~11/14 마감)", 둘 다 아니면 빈칸(진행 중·보류는 안 씀) */
@@ -493,7 +529,8 @@ public class WorkTextService {
                         .append(" | 상태 ").append(statusKo(i.status()))
                         .append(i.dueDate() == null ? "" : " | 마감 " + i.dueDate())
                         .append("DONE".equals(i.status()) && i.doneAt() != null ? " | 완료일 " + day(i.doneAt()) : "")
-                        .append(" | 이번 주 작업 ").append(ReportService.hours(i.activeSec())).append("시간\n");
+                        .append(" | 이번 주 작업 ").append(ReportService.hours(i.activeSec())).append("시간")
+                        .append(sessionNames(i)).append('\n');
                 if (i.memo() != null && !i.memo().isBlank()) {
                     in.append("  메모:\n");
                     i.memo().lines().forEach(l -> in.append("    ").append(l).append('\n'));
@@ -520,6 +557,7 @@ public class WorkTextService {
                         .append(" | 상태 ").append(statusKo(i.status()))
                         .append(" | 마감 ").append(i.dueDate() == null ? "-" : i.dueDate())
                         .append(i.planned() && board.items().stream().noneMatch(b -> b.id() == i.id()) ? " | 다음 주 보드에 넣음" : "")
+                        .append(sessionNames(i))
                         .append('\n');
                 if (i.memo() != null && !i.memo().isBlank()) {
                     in.append("  메모:\n");
@@ -583,6 +621,9 @@ public class WorkTextService {
                 - 보고서체 명사형 종결(~ 추가 및 배포, ~ 분석 및 개선안 도출, ~ 작성, ~ 예정). "~함/~했다/~요" 금지
                 - 구어 표현은 업무 용어로 바꾼다(예: "느린 거 고침" → "조회 성능 개선")
                 - 원인·결과·수치(시간, 건수, 진행률)는 살린다. 이번 주에 한 일만 쓴다(메모의 다른 주 내용은 쓰지 않는다).
+                - 업무명은 입력의 할 일 이름(사용자가 대충 적은 것, 예: "김철수님 요구사항2") 대신 그 할 일의 "연결 세션" 이름을 바탕으로
+                  무슨 일인지 드러나게 쓴다(가장 오래 일한 세션 중심, 업무 용어로 다듬어도 됨). 세션이 없거나 세션 이름이 "…2"·"ver2" 처럼
+                  이름 구실을 못 하면 할 일 이름. 할 일 이름의 요청자(○○님)는 아래 괄호에 "○○님 요청"으로 살린다(이 규칙도 갈래 지시보다 우선)
                 - 업무명 뒤 괄호(이 규칙이 갈래 지시·예시보다 우선):
                   상태가 완료인 업무는 입력의 완료일로 "(~11/5 완료)" — 마감은 쓰지 않는다. 완료가 아니고 입력에 마감이 있으면 "(~11/14 마감)".
                   요청자·진행률도 있으면 함께 "(○○님 요청, ~11/5 완료)", "(○○님 요청, ~11/14 마감)". 짧은 요약 줄은 줄 끝에 붙인다.
@@ -661,6 +702,16 @@ public class WorkTextService {
     private static String shortPath(String path, String repo) {
         int idx = path.lastIndexOf("/" + repo + "/");
         return idx >= 0 ? path.substring(idx + repo.length() + 2) : path;
+    }
+
+    /** 입력 줄 끝 " | 연결 세션: A(1.2시간), B(0.3시간)" — 업무명은 이걸 바탕으로 쓴다 */
+    private static String sessionNames(ItemView i) {
+        if (i.sessions().isEmpty()) {
+            return "";
+        }
+        return " | 연결 세션: " + String.join(", ", i.sessions().stream()
+                .sorted(Comparator.comparingLong(ItemSession::activeSec).reversed()).limit(4)
+                .map(s -> s.title() + "(" + ReportService.hours(s.activeSec()) + "시간)").toList());
     }
 
     private static String subtypeTag(ItemView i, Map<String, List<String>> subtypes) {
