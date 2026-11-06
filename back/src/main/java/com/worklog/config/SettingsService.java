@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.worklog.config.Settings.Category;
 import com.worklog.config.Settings.ProjectRule;
@@ -39,7 +40,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class SettingsService {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    /** 예전 설정에 남은 필드(없앤 기능의 값 등)는 무시하고 읽는다 */
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private static final Set<String> COLORS = Set.of("gray", "blue", "green", "yellow", "red", "purple", "orange", "teal", "pink");
     private static final Pattern PART_ID = Pattern.compile("[a-z0-9][a-z0-9-]{0,23}");
 
@@ -144,8 +147,8 @@ public class SettingsService {
 
     public WorkTextConfig workText() {
         return (WorkTextConfig) cache.computeIfAbsent("work-text", k -> read(k, new TypeReference<WorkTextConfig>() { })
-                .map(c -> new WorkTextConfig(c.full() == null ? DEFAULT_FULL : c.full(), c.parts() == null ? List.of() : c.parts(), c.bold()))
-                .orElse(new WorkTextConfig(DEFAULT_FULL, List.of(), null)));
+                .map(c -> new WorkTextConfig(c.full() == null ? DEFAULT_FULL : c.full(), c.parts() == null ? List.of() : c.parts()))
+                .orElse(new WorkTextConfig(DEFAULT_FULL, List.of())));
     }
 
     @SuppressWarnings("unchecked")
@@ -283,7 +286,7 @@ public class SettingsService {
                     nonNull(p.repos()), p.maxLines() == null || p.maxLines() < 1 ? 3 : Math.min(p.maxLines(), 12),
                     blankToNull(p.guide()), blankToNull(p.example())));
         }
-        write("work-text", new WorkTextConfig(full, parts, config.bold() == null ? workText().bold() : config.bold()));
+        write("work-text", new WorkTextConfig(full, parts));
     }
 
     /** 목록 순서가 곧 리포트 화면 버튼 순서 */

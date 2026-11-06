@@ -74,20 +74,8 @@ function WorkTextEditor({ week, onClose }: { week: string; onClose: () => void }
     timer.current = window.setTimeout(() => save(p, v), 1000)
   }
 
-  // 서식(HTML: 굵게·글머리표 들여쓰기)과 평문(** 뺌)을 같이 넣는다 — 붙여 넣는 곳이 고른다
   const copy = async () => {
-    const text = texts[tab] ?? ''
-    const plain = stripBold(text)
-    try {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          'text/html': new Blob([toHtml(text)], { type: 'text/html' }),
-          'text/plain': new Blob([plain], { type: 'text/plain' }),
-        }),
-      ])
-    } catch {
-      await navigator.clipboard.writeText(plain)
-    }
+    await navigator.clipboard.writeText(texts[tab] ?? '')
     setState('copied')
     window.setTimeout(() => setState('idle'), 1500)
   }
@@ -156,8 +144,7 @@ function WorkTextEditor({ week, onClose }: { week: string; onClose: () => void }
           </button>
         )}
         <span className="dlg-hint">
-          {HINT[tab] ?? '설정 > 주간보고 갈래에서 정한 요약이에요.'} 고치면 자동 저장되고 다음 주 AI 작성 때 문체 예시로 쓰여요. **두 별표** 사이는
-          복사하면 굵게 붙어요.
+          {HINT[tab] ?? '설정 > 주간보고 갈래에서 정한 요약이에요.'} 고치면 자동 저장되고 다음 주 AI 작성 때 문체 예시로 쓰여요.
         </span>
       </div>
       {skippedNote && !running && <div className="dlg-note">{skippedNote}</div>}
@@ -175,52 +162,4 @@ function WorkTextEditor({ week, onClose }: { week: string; onClose: () => void }
       )}
     </div>
   )
-}
-
-/** 굵게 표시(**) 를 뺀 평문 */
-function stripBold(text: string): string {
-  return text.replace(/\*\*(.+?)\*\*/g, '$1')
-}
-
-const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-const inline = (s: string) => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-
-/**
- * 글 → HTML. "- " 줄은 공백 4칸 들여쓰기 단계대로 겹친 글머리표(ul), 나머지 줄은 문단.
- * 노션·워드·메일에 붙이면 글머리표 구조와 굵게가 그대로 간다
- */
-function toHtml(text: string): string {
-  const out: string[] = []
-  let depth = 0 // 열린 ul 수
-  const closeTo = (d: number) => {
-    while (depth > d) {
-      out.push('</li></ul>')
-      depth--
-    }
-  }
-  const openItems: boolean[] = [] // 단계별로 li 가 열려 있나
-  for (const raw of text.split('\n')) {
-    const m = raw.match(/^( *)- (.*)$/)
-    if (!m) {
-      closeTo(0)
-      openItems.length = 0
-      if (raw.trim()) out.push(`<p>${inline(raw.trim())}</p>`)
-      continue
-    }
-    const level = Math.floor(m[1].length / 4) + 1
-    if (level > depth) {
-      while (depth < level) {
-        out.push('<ul>')
-        depth++
-        openItems[depth] = false
-      }
-    } else {
-      closeTo(level)
-      if (openItems[level]) out.push('</li>')
-    }
-    out.push(`<li>${inline(m[2])}`)
-    openItems[level] = true
-  }
-  closeTo(0)
-  return out.join('')
 }

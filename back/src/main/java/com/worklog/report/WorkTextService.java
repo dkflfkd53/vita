@@ -54,13 +54,6 @@ public class WorkTextService {
 
     private static final String I1 = "    ";
     private static final String I2 = "        ";
-    /** 중요한 부분만 굵게 — 복사하면 화면이 서식(HTML)으로 붙인다 */
-    static final String BOLD_RULE = """
-
-                - 정말 중요한 부분만 **굵게**: 구역(갈래)마다 따로 — 전체 업무 내용은 2~5곳, 짧은 요약·차주 계획은 1~3곳.
-                  핵심 성과·결정·수치·임박한 마감(예: **7초→0.02초**, **운영 배포 완료**, **~11/9 마감**)처럼 짧은 구절만 **…** 로 감싼다.
-                  업무명·문장 전체·머리 줄([업무 내용] 등)·카테고리 줄은 감싸지 않는다. 빈 구역은 비워 둔다""";
-
     /** 세부 분류가 있는 카테고리에서 분류를 안 고른 할 일 */
     static final String UNSORTED = "미분류";
     private static final Pattern GITMOJI = Pattern.compile("^\\S*\\s*(\\w+)(\\([^)]*\\))?!?:\\s*");
@@ -626,7 +619,7 @@ public class WorkTextService {
                 - 업무명 뒤 괄호(이 규칙이 갈래 지시·예시보다 우선):
                   상태가 완료인 업무는 입력의 완료일로 "(~11/5 완료)" — 마감은 쓰지 않는다. 완료가 아니고 입력에 마감이 있으면 "(~11/14 마감)".
                   요청자·진행률도 있으면 함께 "(○○님 요청, ~11/5 완료)", "(○○님 요청, ~11/14 마감)". 짧은 요약 줄은 줄 끝에 붙인다.
-                  진행 중·보류·예정 같은 다른 상태는 쓰지 않는다. 마감이 없는 업무에 마감을 지어 넣지 않는다%s
+                  진행 중·보류·예정 같은 다른 상태는 쓰지 않는다. 마감이 없는 업무에 마감을 지어 넣지 않는다
                   단 차주 계획 갈래는 다음 주에 할 일만 쓴다(~ 예정, ~ 진행 등 계획 표현)
                 - 입력에 [세부 분류]가 있으면(이 규칙이 갈래 지시·예시보다 우선): 그 카테고리는 카테고리 줄 아래에 분류 줄 "- 분류명"을
                   한 단계 끼우고, 그 아래 업무·세부를 한 단계씩 더 들여쓴다(공백 4칸 단위). 분류는 [세부 분류] 순서, 업무의 분류는 입력의
@@ -638,7 +631,7 @@ public class WorkTextService {
                 [문체·형식 예시]%s
                 ---
                 %s
-                """.formatted(p.label(), SummaryService.RULES, settings.workText().boldOn() ? BOLD_RULE : "", spec,
+                """.formatted(p.label(), SummaryService.RULES, spec,
                 multi ? " 구역 표시(" + String.join(", ", parts.stream().map(Part::mark).toList()) + ")는 각 구역 첫 줄에 그대로 쓴다." : "",
                 examples, input);
     }

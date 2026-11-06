@@ -413,10 +413,6 @@ function WorkTextParts({ data }: { data: SettingsAll }) {
       dirty={dirty}
       onSave={() => api.saveWorkTextConfig(cfg)}
     >
-      <label className="st-check">
-        <input type="checkbox" checked={cfg.bold !== false} onChange={(e) => setCfg({ ...cfg, bold: e.target.checked })} />
-        AI 가 중요한 부분 몇 곳(핵심 성과·수치·완료)만 굵게 표시 — 복사하면 노션·워드·메일에 굵게 붙어요
-      </label>
       <div className="st-part">
         <div className="st-part-head">
           <b>{cfg.full.title}</b>
