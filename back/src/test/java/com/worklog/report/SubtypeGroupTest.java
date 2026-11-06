@@ -16,10 +16,11 @@ class SubtypeGroupTest {
     }
 
     @Test
-    void 분류_순서대로_묶고_빈_분류는_빼고_미분류는_끝() {
+    void 분류는_빈_것도_순서대로_다_두고_미분류는_끝() {
         var m = WorkTextService.bySubtype(List.of(item(1, "오류"), item(2, null), item(3, "기능개발"), item(4, "없는분류")),
                 List.of("기능개발", "디비 보정", "오류"));
-        assertThat(m.keySet()).containsExactly("기능개발", "오류", WorkTextService.UNSORTED);
+        assertThat(m.keySet()).containsExactly("기능개발", "디비 보정", "오류", WorkTextService.UNSORTED);
+        assertThat(m.get("디비 보정")).isEmpty();
         assertThat(m.get(WorkTextService.UNSORTED)).extracting(ItemView::id).containsExactly(2L, 4L);
     }
 

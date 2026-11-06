@@ -224,7 +224,7 @@ public class WorkTextService {
 
     /**
      * 카테고리 안 할 일을 세부 분류 순서대로 묶는다. order 가 없으면(세부 분류 없는 카테고리) 키 null 하나에 전부.
-     * 분류가 빈 할 일은 맨 끝 "미분류"
+     * 세부 분류 줄은 할 일이 없어도 설정 순서대로 다 둔다(사내 양식이 분류를 늘 적음). 분류가 빈 할 일은 맨 끝 "미분류"(있을 때만)
      */
     static Map<String, List<ItemView>> bySubtype(List<ItemView> items, List<String> order) {
         Map<String, List<ItemView>> m = new LinkedHashMap<>();
@@ -239,7 +239,6 @@ public class WorkTextService {
             String key = i.subtype() != null && order.contains(i.subtype()) ? i.subtype() : UNSORTED;
             m.computeIfAbsent(key, k -> new ArrayList<>()).add(i);
         }
-        m.values().removeIf(List::isEmpty);
         return m;
     }
 
@@ -631,7 +630,8 @@ public class WorkTextService {
                   단 차주 계획 갈래는 다음 주에 할 일만 쓴다(~ 예정, ~ 진행 등 계획 표현)
                 - 입력에 [세부 분류]가 있으면(이 규칙이 갈래 지시·예시보다 우선): 그 카테고리는 카테고리 줄 아래에 분류 줄 "- 분류명"을
                   한 단계 끼우고, 그 아래 업무·세부를 한 단계씩 더 들여쓴다(공백 4칸 단위). 분류는 [세부 분류] 순서, 업무의 분류는 입력의
-                  "분류 …" 표시 그대로, 표시가 없으면 "미분류". 해당 업무가 없는 분류 줄은 뺀다
+                  "분류 …" 표시 그대로, 표시가 없으면 "미분류". 분류 줄은 [세부 분류]에 적힌 것을 그 순서대로 모두 쓴다 —
+                  해당 업무가 없는 분류는 분류 줄 한 줄만 둔다(그 아래 비움). "미분류"는 해당 업무가 있을 때만 맨 끝에
                 쓸 것:%s
                 출력은 글만. 설명·코드펜스 없이.%s
 
