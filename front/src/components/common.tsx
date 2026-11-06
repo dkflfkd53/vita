@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState } from 'react'
 import { projectColor, tint } from '../lib/format'
 import type { TaskStatus } from '../api/types'
 
@@ -65,4 +66,32 @@ export function ErrorBox({ error }: { error: unknown }) {
 export function ToolBadge({ tools }: { tools: string[] | undefined }) {
   if (!tools || !tools.includes('codex')) return null
   return <span className="tool-badge">{tools.includes('claude') ? 'Claude·Codex' : 'Codex'}</span>
+}
+
+/**
+ * 요청 원문 — 4줄까지 보이고, 넘치면 '펼치기'로 전문·'접기'로 다시 4줄.
+ * 수집할 때 너무 긴 원문은 앞부분만 저장돼(…로 끝남) 그때는 그렇다고 알린다
+ */
+export function PromptText({ text }: { text: string }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [open, setOpen] = useState(false)
+  const [overflow, setOverflow] = useState(false)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (el && !open) setOverflow(el.scrollHeight > el.clientHeight + 1)
+  }, [text, open])
+  const cut = text.length > 2000 && text.endsWith('…')
+  return (
+    <span className="prompt-text">
+      <span ref={ref} className={`txt${open ? ' full' : ''}`}>
+        {text}
+      </span>
+      {(overflow || open) && (
+        <button type="button" className="prompt-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
+          {open ? '접기' : '펼치기'}
+        </button>
+      )}
+      {open && cut && <span className="prompt-cut">너무 길어 수집할 때 앞부분만 저장된 요청이에요</span>}
+    </span>
+  )
 }

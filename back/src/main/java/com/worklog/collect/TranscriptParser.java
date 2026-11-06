@@ -18,7 +18,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 public final class TranscriptParser {
 
-    static final int MAX_PROMPT_LENGTH = 2000;
+    /** 요청 원문 저장 한도(자) — 붙여 넣은 로그·문서도 상세 화면에서 전문을 볼 수 있게 넉넉히. 2026-11-06 전 수집분은 2,000자 */
+    static final int MAX_PROMPT_LENGTH = 20000;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Set<String> EDIT_TOOLS = Set.of("Edit", "Write", "MultiEdit", "NotebookEdit");

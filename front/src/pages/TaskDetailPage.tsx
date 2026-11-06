@@ -5,7 +5,7 @@ import { useTask } from '../api/hooks'
 import { api } from '../api/client'
 import type { SessionInfo } from '../api/types'
 import { Icon } from '../components/Icon'
-import { ErrorBox, Loading, ProjectLabel, StatusLabel } from '../components/common'
+import { ErrorBox, Loading, ProjectLabel, PromptText, StatusLabel } from '../components/common'
 import { UsageCompact } from '../components/UsageBreakdown'
 import { fmtDateTime, fmtDayLong, fmtDuration, fmtShort, fmtTime, fmtUsd } from '../lib/format'
 
@@ -136,7 +136,7 @@ export function TaskDetailPage() {
                     <span className="time">
                       {p.at.slice(5, 10).replace('-', '/')} {fmtTime(p.at)}
                     </span>
-                    <span className="txt">{p.text}</span>
+                    <PromptText text={p.text} />
                   </li>
                 ))}
               </ul>

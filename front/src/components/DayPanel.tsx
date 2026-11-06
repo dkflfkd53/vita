@@ -1,11 +1,10 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDay, useLastJob, useRunningJob, useStartJob } from '../api/hooks'
 import { api } from '../api/client'
 import type { DaySession, DayTask } from '../api/types'
 import { fmtDayLong, fmtDuration, fmtShort, fmtTime, fmtUsd, itemColor, today } from '../lib/format'
 import { Icon } from './Icon'
-import { ErrorBox, Loading, ProjectLabel } from './common'
+import { ErrorBox, Loading, ProjectLabel, PromptText } from './common'
 
 export function DayPanel({ day, onClose }: { day: string; onClose: () => void }) {
   const { data, isLoading, error } = useDay(day)
@@ -133,7 +132,6 @@ function TaskBlock({ task }: { task: DayTask }) {
 }
 
 function SessionFolds({ session, multi }: { session: DaySession; multi: boolean }) {
-  const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const prefix = multi ? `${session.title} · ` : ''
   return (
     <>
@@ -146,12 +144,7 @@ function SessionFolds({ session, multi }: { session: DaySession; multi: boolean 
             {session.prompts.map((p, i) => (
               <li key={i}>
                 <span className="time">{fmtTime(p.at)}</span>
-                <span
-                  className={`txt${expanded.has(i) ? ' full' : ''}`}
-                  onClick={() => setExpanded((prev) => new Set(prev).add(i))}
-                >
-                  {p.text}
-                </span>
+                <PromptText text={p.text} />
               </li>
             ))}
           </ul>
