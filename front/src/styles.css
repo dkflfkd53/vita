@@ -1360,10 +1360,6 @@ a.tg-title:hover { color: var(--accent); }
 .ob-tile-title { font-size: 13px; color: var(--text-muted); font-weight: 600; }
 .ob-tile-big { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .ob-tile-sub { font-size: 13px; color: var(--text-muted); min-height: 16px; }
-.ob-tile::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0; background: transparent; }
-.ob-tile.tone-bad::before { background: var(--c-red); }
-.ob-tile.tone-warn::before { background: var(--c-orange, #d97706); }
-.ob-tile.tone-good::before { background: var(--c-green); }
 .ob-tile.tone-bad .ob-tile-big { color: var(--c-red); }
 .ob-tile.tone-good .ob-tile-big { color: var(--c-green); }
 .ob-load-item.focus .ob-load-row { background: color-mix(in srgb, var(--accent) 10%, transparent); border-radius: 6px; }
@@ -1418,3 +1414,5 @@ button.ob-score-row:hover { background: var(--row-hover); }
   .ob-score-k { display: block; }
   .ob-score-detail { grid-template-columns: 1fr; }
 }
+.ob-tile.tone-bad .ob-tile-sub { color: var(--c-red); }
+.ob-tile.tone-warn .ob-tile-sub { color: var(--sun-ink); }

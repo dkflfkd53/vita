@@ -654,6 +654,8 @@ function summarizeOutcomes(rules: Outcome[]) {
     better: judged.filter((r) => r.verdict === '개선').length,
     worse: judged.filter((r) => r.verdict === '악화').length,
     minAfter: rules.length ? Math.min(...rules.map((r) => r.afterHours)) : 0,
+    /** 가장 먼저 결과가 나올 규칙까지 남은 작업 시간 */
+    leftHours: rules.length ? Math.max(0, MIN_AFTER_HOURS - Math.max(...rules.map((r) => r.afterHours))) : 0,
     misplaced: rules.filter((r) => r.repo && r.sourceRepos.length > 0 && !r.sourceRepos.includes(r.repo)).length,
   }
 }
@@ -688,7 +690,7 @@ function ImproveTiles({ view, onPick, insights }: { view: ImproveView; onPick: (
     },
     {
       key: 'effect',
-      title: '도입 효과 · 같은 실수',
+      title: '도입 효과',
       big:
         rules.length === 0 && missing === 0
           ? '—'
@@ -701,10 +703,10 @@ function ImproveTiles({ view, onPick, insights }: { view: ImproveView; onPick: (
         rules.length === 0 && missing === 0
           ? '도입한 규칙이 없어요'
           : [
-              o.ready.length === 0 && rules.length > 0 ? `도입 후 작업 ${o.minAfter.toFixed(1)}/${MIN_AFTER_HOURS}시간` : '',
+              o.ready.length === 0 && rules.length > 0 ? `결과까지 작업 ${o.leftHours.toFixed(1)}시간 남음` : '',
               o.judged.length > 0 ? `지표 좋아짐 ${o.better}/${o.judged.length}` : '',
               o.worse > 0 ? `나빠짐 ${o.worse}` : '',
-              o.misplaced > 0 ? `넣은 곳 확인 ${o.misplaced}` : '',
+              o.misplaced > 0 ? `넣은 곳이 다른 규칙 ${o.misplaced}` : '',
               missing > 0 ? `신호 없음 ${missing}` : '',
             ]
               .filter(Boolean)
@@ -773,7 +775,7 @@ function OutcomeCard({ defs }: { defs: MetricDef[] }) {
   }, [doneId, qc])
   const rules = q.data?.rules ?? []
   const missing = q.data?.missingSignals ?? 0
-  const { ready, bRate, aRate, pct, minAfter, judged, better } = summarizeOutcomes(rules)
+  const { ready, bRate, aRate, pct, leftHours, judged, better } = summarizeOutcomes(rules)
   if (rules.length === 0 && missing === 0) {
     return <div className="ob-note">도입한 규칙이 없어요. 제안을 도입하면 여기서 같은 실수가 얼마나 줄었는지 보여줘요.</div>
   }
@@ -788,7 +790,7 @@ function OutcomeCard({ defs }: { defs: MetricDef[] }) {
               {pct != null && <b className={pct < 0 ? 'good' : pct > 0 ? 'bad' : ''}> {pct > 0 ? `+${pct}` : pct}%</b>}
             </>
           ) : (
-            <>측정 중 · 도입 후 작업 {minAfter.toFixed(1)}/{MIN_AFTER_HOURS}시간</>
+            <>측정 중 — 규칙을 넣은 뒤 작업이 {MIN_AFTER_HOURS}시간 쌓이면 결과가 나와요(결과까지 {leftHours.toFixed(1)}시간 남음)</>
           )}
           {judged.length > 0 && ` · 지표 좋아짐 ${better}/${judged.length}`}
         </span>
@@ -839,7 +841,7 @@ function OutcomeRow({ o, def }: { o: Outcome; def: MetricDef | undefined }) {
   const pct = early ? null : changePct(o.beforeRate, o.afterRate)
   const misplaced = !!o.repo && o.sourceRepos.length > 0 && !o.sourceRepos.includes(o.repo)
   const result: { text: string; tone: string } = early
-    ? { text: `측정 중 ${o.afterHours.toFixed(1)}/${MIN_AFTER_HOURS}h`, tone: 'wait' }
+    ? { text: `결과까지 ${Math.max(0, MIN_AFTER_HOURS - o.afterHours).toFixed(1)}h`, tone: 'wait' }
     : pct == null
       ? { text: o.beforeHits === 0 && o.afterHits === 0 ? '재발 없음' : '비교 불가', tone: 'flat' }
       : pct <= -10
@@ -887,7 +889,7 @@ function OutcomeRow({ o, def }: { o: Outcome; def: MetricDef | undefined }) {
           <span className={`ob-verdict ob-row-verdict ${result.tone}`}>{result.text}</span>
           {misplaced && (
             <span className="ob-score-warn" title={`문제는 ${o.sourceRepos.join(', ')} 세션에서 났는데 ${o.repo} 에 넣었어요`}>
-              ! 넣은 곳 확인
+              ! 넣은 곳이 다름
             </span>
           )}
           <Icon name="chevron" size={12} />
