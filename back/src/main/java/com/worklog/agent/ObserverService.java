@@ -812,7 +812,8 @@ public class ObserverService {
         }
         Data all = calc.load(loadFrom, today);
         Map<String, InsightInfo> infos = new HashMap<>();
-        insights().forEach(i -> infos.put(String.valueOf(i.id()), new InsightInfo(i.after(), i.deltaPct(), i.verdict())));
+        insights().forEach(i -> infos.put(String.valueOf(i.id()), new InsightInfo(i.after(), i.deltaPct(), i.verdict(), i.effect(),
+                i.targetLabel(), i.load() == null ? 0 : i.load().always())));
         List<Outcome> out = new ArrayList<>();
         for (InsightRow r : withSignals) {
             String repo = repoOfTarget(r.target);
@@ -863,12 +864,13 @@ public class ObserverService {
                     Period.containing("week", adopted).key(), bh[0], bs[0] / 3600.0, ah[0], as[0] / 3600.0,
                     rate(bh[0], bs[0]), rate(ah[0], as[0]), r.metric, r.baseline, info == null ? null : info.after(),
                     info == null ? null : info.deltaPct(), info == null ? r.verdict : info.verdict(),
-                    r.sessions.stream().map(SourceSession::repo).filter(x -> x != null).distinct().toList()));
+                    r.sessions.stream().map(SourceSession::repo).filter(x -> x != null).distinct().toList(),
+                    r.effect, r.target, info == null ? r.target : info.targetLabel(), info == null ? 0 : info.loadTokens()));
         }
         return new Outcomes(out, missing);
     }
 
-    private record InsightInfo(Double after, Double deltaPct, String verdict) {
+    private record InsightInfo(Double after, Double deltaPct, String verdict, String effect, String targetLabel, int loadTokens) {
     }
 
     /** 작업 10시간당 횟수 — 1시간 미만이면 비교 불가 */

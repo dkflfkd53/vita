@@ -103,7 +103,8 @@ public final class ObserverViews {
     public record Outcome(long id, String title, String status, String adoptedAt, List<String> signals, String repo,
                           List<OutcomeWeek> weeks, String adoptedWeek, int beforeHits, double beforeHours, int afterHits,
                           double afterHours, Double beforeRate, Double afterRate, String metric, Double baseline, Double after,
-                          Double deltaPct, String verdict, List<String> sourceRepos) {
+                          Double deltaPct, String verdict, List<String> sourceRepos, String effect, String target,
+                          String targetLabel, int loadTokens) {
     }
 
     /** missingSignals = 재발 신호가 없어 셀 수 없는 규칙 수(도입·측정 중·결과) */

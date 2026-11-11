@@ -779,45 +779,127 @@ function OutcomeCard({ defs }: { defs: MetricDef[] }) {
   }
   return (
     <section className="ob-outcome">
-      <div className="ob-load-head">
+      <div className="ob-outcome-head">
         <b>도입 효과</b>
-        <span className="subtle">도입한 규칙마다 같은 실수가 다시 난 횟수(작업 10시간당, 도입 전 28일 ↔ 도입 후)와 고른 병목 지표의 변화예요.</span>
-      </div>
-      <div className="ob-outcome-bar">
-        <span>
+        <span className="ob-outcome-sum">
           {ready.length > 0 ? (
             <>
-              같은 실수 10시간당{' '}
-              <b>
-                {rateText(bRate)} → {rateText(aRate)}회
-              </b>
-              {pct != null && <span className={pct < 0 ? 'good' : pct > 0 ? 'bad' : 'subtle'}> {pct > 0 ? `+${pct}` : pct}%</span>}
-              {ready.length < rules.length && <span className="subtle"> (규칙 {ready.length}개 기준)</span>}
+              같은 실수 {rateText(bRate)} → {rateText(aRate)}회/10시간
+              {pct != null && <b className={pct < 0 ? 'good' : pct > 0 ? 'bad' : ''}> {pct > 0 ? `+${pct}` : pct}%</b>}
             </>
           ) : (
-            <span className="subtle">
-              측정 중 — 도입 후 작업이 {MIN_AFTER_HOURS}시간 쌓이면 같은 실수 전후를 비교해요(지금 {minAfter.toFixed(1)}시간)
-            </span>
+            <>측정 중 · 도입 후 작업 {minAfter.toFixed(1)}/{MIN_AFTER_HOURS}시간</>
           )}
-        </span>
-        <span className="subtle">
-          지표 개선 {better}/{judged.length} · 재발을 세는 규칙 {rules.length}개{missing > 0 && ` · 신호 없는 규칙 ${missing}개`}
+          {judged.length > 0 && ` · 지표 좋아짐 ${better}/${judged.length}`}
         </span>
         {missing > 0 && (
-          <button className="btn btn-sm" onClick={() => start.mutate(undefined)} disabled={!!running || start.isPending} title="같은 실수가 다시 나면 명령·오류·정정 요청에 나올 문자열을 AI 가 골라요">
-            {running ? (running.message ?? '고르는 중') : '재발 신호 만들기'}
+          <button className="btn btn-sm" onClick={() => start.mutate(undefined)} disabled={!!running || start.isPending}>
+            {running ? (running.message ?? '고르는 중') : `신호 없는 규칙 ${missing}개 — 재발 신호 만들기`}
           </button>
         )}
       </div>
-      {rules.map((o) => (
-        <OutcomeRow key={o.id} o={o} def={defs.find((d) => d.key === o.metric)} />
-      ))}
+      <details className="ob-how">
+        <summary>어떻게 재나요?</summary>
+        <ul>
+          <li>
+            <b>줄이려는 실수</b> — 규칙마다 정한 «재발 신호»(오류 문구·거절된 명령·정정 요청에 나오는 말)가 나온 횟수. 도입 전 28일과 도입 후(최대 28일)를 작업
+            10시간당으로 맞춰 비교해요. 도입 후 작업이 {MIN_AFTER_HOURS}시간 쌓이기 전엔 «측정 중».
+          </li>
+          <li>
+            <b>병목 지표</b> — 제안할 때 고른 지표 하나(도구 실패율·정정 요청 비율 등)를 도입 직전 14일과 도입 후 14일로 비교. 10% 넘게 좋아지면 «좋아짐».
+          </li>
+          <li>
+            <b>늘어난 읽기</b> — 이 규칙 때문에 매 세션 더 읽히는 양(글자로 어림한 토큰). 메모리 규칙은 색인 한 줄만 늘 읽혀요.
+          </li>
+          <li>
+            <b>범위</b> — 규칙을 넣은 저장소의 세션만 셉니다(그 저장소 세션만 규칙을 읽으므로). 전역 규칙은 전체.
+          </li>
+        </ul>
+      </details>
+      <div className="ob-score">
+        <div className="ob-score-row ob-score-headrow" aria-hidden>
+          <span>규칙</span>
+          <span>줄이려는 실수</span>
+          <span>병목 지표</span>
+          <span>늘어난 읽기</span>
+          <span>결과</span>
+        </div>
+        {rules.map((o) => (
+          <OutcomeRow key={o.id} o={o} def={defs.find((d) => d.key === o.metric)} />
+        ))}
+      </div>
     </section>
   )
 }
 
-/** 규칙 하나 — 주별 재발 막대(도입 주에 세로선) + 도입 전후 숫자 */
+/** 규칙 하나 = 한 줄 성적표(실수 전→후 · 지표 전→후 · 늘어난 읽기 · 결과). 누르면 주별 막대와 재는 방법 */
 function OutcomeRow({ o, def }: { o: Outcome; def: MetricDef | undefined }) {
+  const [open, setOpen] = useState(false)
+  const early = o.afterHours < MIN_AFTER_HOURS
+  const pct = early ? null : changePct(o.beforeRate, o.afterRate)
+  const misplaced = !!o.repo && o.sourceRepos.length > 0 && !o.sourceRepos.includes(o.repo)
+  const result: { text: string; tone: string } = early
+    ? { text: `측정 중 ${o.afterHours.toFixed(1)}/${MIN_AFTER_HOURS}h`, tone: 'wait' }
+    : pct == null
+      ? { text: o.beforeHits === 0 && o.afterHits === 0 ? '재발 없음' : '비교 불가', tone: 'flat' }
+      : pct <= -10
+        ? { text: `줄었음 ${pct}%`, tone: 'good' }
+        : pct >= 10
+          ? { text: `늘었음 +${pct}%`, tone: 'bad' }
+          : { text: '변화 없음', tone: 'flat' }
+  return (
+    <div className={`ob-score-item${open ? ' open' : ''}`}>
+      <button className="ob-score-row" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <span className="ob-score-rule">
+          <b>{o.title}</b>
+          {o.effect && <span className="subtle">{o.effect}</span>}
+        </span>
+        <span className="ob-score-cell">
+          <span className="ob-score-k">줄이려는 실수</span>
+          <b>
+            {o.beforeHits}회 → {o.afterHits}회
+          </b>
+          <span className="subtle">
+            도입 전 {o.beforeHours.toFixed(0)}h · 후 {o.afterHours.toFixed(1)}h 작업
+          </span>
+        </span>
+        <span className="ob-score-cell">
+          <span className="ob-score-k">{def?.label ?? '병목 지표'}</span>
+          {o.metric ? (
+            <>
+              <b>
+                {fmtMetric(def, o.baseline)} → {fmtMetric(def, o.after)}
+              </b>
+              <span className="subtle">
+                {def?.label ?? o.metric} · {o.verdict ?? '측정 중'}
+              </span>
+            </>
+          ) : (
+            <span className="subtle">지표 없음</span>
+          )}
+        </span>
+        <span className="ob-score-cell">
+          <span className="ob-score-k">늘어난 읽기</span>
+          <b>+{tok(o.loadTokens)}</b>
+          <span className="subtle">매 세션</span>
+        </span>
+        <span className="ob-score-result">
+          <span className={`ob-verdict ob-row-verdict ${result.tone}`}>{result.text}</span>
+          {misplaced && (
+            <span className="ob-score-warn" title={`문제는 ${o.sourceRepos.join(', ')} 세션에서 났는데 ${o.repo} 에 넣었어요`}>
+              ! 넣은 곳 확인
+            </span>
+          )}
+          <Icon name="chevron" size={12} />
+        </span>
+      </button>
+      {open && <OutcomeDetail o={o} misplaced={misplaced} />}
+    </div>
+  )
+}
+
+/** 펼친 줄 — 주별 재발 막대 + 재는 범위·기간·신호 + 경고 */
+function OutcomeDetail({ o, misplaced }: { o: Outcome; misplaced: boolean }) {
   const [hover, setHover] = useState<number | null>(null)
   const n = o.weeks.length
   const W = 300
@@ -827,25 +909,11 @@ function OutcomeRow({ o, def }: { o: Outcome; def: MetricDef | undefined }) {
   const bw = Math.min(14, band * 0.6)
   const max = Math.max(1, ...o.weeks.map((w) => w.hits))
   const adoptIdx = o.weeks.findIndex((w) => w.week === o.adoptedWeek)
-  const early = o.afterHours < MIN_AFTER_HOURS
-  const pct = early ? null : changePct(o.beforeRate, o.afterRate)
   const w = hover != null ? o.weeks[hover] : null
   return (
-    <div className="ob-outcome-row">
-      <div className="ob-outcome-title">
-        <b>{o.title}</b>
-        <span className="subtle">
-          {o.repo ? `${o.repo} 세션` : '전체 세션'} · 신호 {o.signals.map((s) => `“${s}”`).join(', ')}
-        </span>
-        {o.repo && o.sourceRepos.length > 0 && !o.sourceRepos.includes(o.repo) && (
-          <span className="ob-outcome-warn">
-            문제는 {o.sourceRepos.join(', ')} 세션에서 났는데 {o.repo} 에 넣었어요 — 그 세션은 이 규칙을 안 읽어요.{' '}
-            <Link to={`/ai?tab=improve&view=proposals&st=${o.status}&ins=${o.id}`}>규칙 카드로</Link>
-          </span>
-        )}
-        {o.beforeHits === 0 && o.afterHits === 0 && <span className="subtle">도입 전후 모두 0회 — 펼친 카드에서 재발 신호가 맞는지 확인하세요</span>}
-      </div>
+    <div className="ob-score-detail">
       <div className="ob-outcome-chart">
+        <div className="ob-score-k">주별 재발 횟수</div>
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" aria-label={`${o.title} 주별 재발 횟수`} onPointerLeave={() => setHover(null)}>
           <line x1={0} x2={W} y1={H - 0.5} y2={H - 0.5} className="ob-axis" />
           {adoptIdx >= 0 && (
@@ -880,58 +948,28 @@ function OutcomeRow({ o, def }: { o: Outcome; def: MetricDef | undefined }) {
               <b>{w.hits}회</b> · {md(w.from)} 주 · 작업 {fmtShort(w.activeSec)}
             </>
           ) : (
-            <>
-              주별 재발 횟수 · {md(o.weeks[0]?.from ?? '')}~ · 막대에 올리면 그 주 숫자
-            </>
+            <>{md(o.weeks[0]?.from ?? '')}부터 · 막대에 올리면 그 주 숫자</>
           )}
         </div>
       </div>
-      <div className="ob-outcome-nums">
-        <div>
-          <span className="subtle">재발 · 10시간당</span>
-          <b className="num">
-            {rateText(o.beforeRate)} → {early ? '…' : rateText(o.afterRate)}
-          </b>
-          <span className={pct == null ? 'subtle' : pct < 0 ? 'good' : pct > 0 ? 'bad' : 'subtle'}>
-            {early ? `측정 중 · 도입 후 작업 ${o.afterHours.toFixed(1)}/${MIN_AFTER_HOURS}시간` : pct == null ? '비교 불가' : `${pct > 0 ? '+' : ''}${pct}%`}
-          </span>
-          <span className="subtle ob-outcome-raw">
-            {o.beforeHits}회/{o.beforeHours.toFixed(0)}h → {o.afterHits}회/{o.afterHours.toFixed(0)}h
-          </span>
-        </div>
-        {o.metric && (
-          <div>
-            <span className="subtle">{def?.label ?? o.metric}</span>
-            <b className="num">
-              {fmtMetric(def, o.baseline)} → {fmtMetric(def, o.after)}
-            </b>
-            <span className={`ob-verdict ob-row-verdict ${VERDICT_TONE[o.verdict ?? '측정 중'] ?? 'flat'}`}>{o.verdict ?? '측정 중'}</span>
-          </div>
-        )}
-      </div>
-      <details className="ob-outcome-table">
-        <summary>표로 보기</summary>
-        <table>
-          <thead>
-            <tr>
-              <th>주</th>
-              <th>재발</th>
-              <th>작업 시간</th>
-            </tr>
-          </thead>
-          <tbody>
-            {o.weeks.map((wk) => (
-              <tr key={wk.week} className={wk.week === o.adoptedWeek ? 'adopt' : ''}>
-                <td>
-                  {md(wk.from)} 주{wk.week === o.adoptedWeek && ' (도입)'}
-                </td>
-                <td>{wk.hits}</td>
-                <td>{fmtShort(wk.activeSec)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </details>
+      <dl className="ob-score-how">
+        <dt>범위</dt>
+        <dd>{o.repo ? `${o.repo} 세션만` : '전체 세션'}</dd>
+        <dt>기간</dt>
+        <dd>
+          도입 전 28일 {o.beforeHits}회/{o.beforeHours.toFixed(0)}h → 도입 후 {o.afterHits}회/{o.afterHours.toFixed(1)}h
+        </dd>
+        <dt>재발 신호</dt>
+        <dd className="mono">{o.signals.join(' · ')}</dd>
+        <dt>넣은 곳</dt>
+        <dd>
+          {o.targetLabel ?? o.target}
+          {misplaced && <span className="bad"> — 문제는 {o.sourceRepos.join(', ')} 세션에서 났어요. 그 세션은 이 규칙을 안 읽어요</span>}
+        </dd>
+      </dl>
+      <Link className="ob-score-link" to={`/ai?tab=improve&view=proposals&st=${o.status}&ins=${o.id}`}>
+        규칙 카드 열기(신호·문안 고치기)
+      </Link>
     </div>
   )
 }

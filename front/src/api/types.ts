@@ -609,6 +609,12 @@ export interface Outcome {
   verdict: string | null
   /** 발생 세션들의 저장소 — 넣은 곳(repo)과 다르면 규칙이 그 세션엔 안 읽힌다 */
   sourceRepos: string[]
+  /** 넣으면 무엇이 얼마나 줄지(제안 때 적은 한 줄) */
+  effect: string | null
+  target: string | null
+  targetLabel: string | null
+  /** 이 규칙 때문에 매 세션 더 읽히는 추정 토큰 */
+  loadTokens: number
 }
 
 export interface Outcomes {
