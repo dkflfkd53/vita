@@ -61,6 +61,19 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1    # Windows (PowerShell)
 끝에 `실행 중: http://127.0.0.1:4100` 이 나오면 브라우저로 엽니다. 처음 빌드는 의존성을 내려받느라 몇 분 걸립니다.
 코드를 받아 고친 뒤(`git pull` 포함) 설치 스크립트를 다시 돌리면 새 버전으로 교체·재시작됩니다. 리눅스는 아직 자동 시작 스크립트가 없습니다.
 
+### 업데이트
+
+새 버전이 나오면 사이드바 아래에 **「새 버전 n개 · 업데이트」** 버튼이 뜹니다(6시간마다 확인, 설정 › 버전에서 «지금 확인»).
+누르면 `git pull` 후 설치 스크립트를 다시 돌려 재시작하고, 화면이 저절로 새로고침됩니다(1~2분).
+저장소에 커밋 안 한 변경이 있으면 건드리지 않고 멈춥니다.
+
+이 버튼은 앱이 저장소 위치를 알아야 켜집니다. 이 기능이 들어가기 전에 설치했다면 **처음 한 번만** 직접 받아 다시 설치하세요.
+
+```bash
+git pull && ./install.sh                                         # macOS
+git pull; powershell -ExecutionPolicy Bypass -File .\install.ps1  # Windows
+```
+
 > Windows 지원은 새로 넣은 것이라 실제 Windows 에서 아직 충분히 검증되지 않았습니다. 설치가 막히면 Claude Code 에 오류를 보여 주거나 이슈로 남겨 주세요.
 
 ### 처음 설정

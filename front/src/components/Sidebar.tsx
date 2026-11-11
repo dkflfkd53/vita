@@ -8,6 +8,7 @@ import { useTheme, type ThemeChoice } from '../lib/theme'
 import { Icon } from './Icon'
 import { VitaWordmark } from './VitaLogo'
 import { StatusDot } from './common'
+import { UpdateNotice } from './UpdatePanel'
 
 const NAV: { to: string; end?: boolean; icon: 'check' | 'calendar' | 'report' | 'activity' | 'settings'; label: string }[] = [
   { to: '/', end: true, icon: 'check', label: '업무' },
@@ -136,6 +137,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
       </div>
 
       <div className="side-footer">
+        <UpdateNotice />
         {running && (
           <div className="job-line" title={running.message ?? running.label}>
             <div className="spinner" />

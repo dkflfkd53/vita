@@ -38,6 +38,7 @@ import type {
   DietItem,
   DietLog,
   Outcomes,
+  UpdateStatus,
 } from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -124,6 +125,9 @@ export const api = {
     request<Observer>(`/observer/${kind}/${key}${scope ? `?scope=${encodeURIComponent(scope)}` : ''}`),
   metricDefs: () => request<MetricDef[]>('/observer/metric-defs'),
   insightPending: () => request<InsightPending>('/observer/insights/pending'),
+  updateStatus: () => request<UpdateStatus>('/update'),
+  updateCheck: () => request<UpdateStatus>('/update/check', { method: 'POST' }),
+  updateApply: () => request<{ message: string }>('/update/apply', { method: 'POST' }),
   outcomes: () => request<Outcomes>('/observer/outcomes'),
   insightSignals: () => request<JobView>('/observer/insights/signals', { method: 'POST' }),
   ruleLoad: () => request<RuleLoad[]>('/observer/rule-load'),

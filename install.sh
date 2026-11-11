@@ -10,6 +10,8 @@ APP_DIR="$DATA_DIR/app"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 JAVA_HOME_21="$(/usr/libexec/java_home -v 21)"
 CLAUDE_BIN="$(command -v claude || true)"
+# 앱 안 «업데이트» 버튼이 다시 빌드할 때 쓰는 node(nvm 등)도 PATH 에 넣는다
+NODE_DIR="$(dirname "$(command -v node || echo /usr/bin/node)")"
 
 ./build.sh
 mkdir -p "$APP_DIR" "$DATA_DIR/logs"
@@ -29,15 +31,18 @@ cat > "$PLIST" <<EOF
     <string>-jar</string>
     <string>$APP_DIR/worklog.jar</string>
     ${CLAUDE_BIN:+<string>--worklog.claude-bin=$CLAUDE_BIN</string>}
+    <string>--worklog.repo-dir=$(pwd)</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key><string>$(dirname "${CLAUDE_BIN:-/usr/bin/true}"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>PATH</key><string>$(dirname "${CLAUDE_BIN:-/usr/bin/true}"):$NODE_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>WORKLOG_DATA_DIR</key><string>$DATA_DIR</string>
   </dict>
   <key>WorkingDirectory</key><string>$DATA_DIR</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <!-- 앱 안 업데이트가 띄운 설치 스크립트가 서버를 내릴 때 같이 죽지 않게 -->
+  <key>AbandonProcessGroup</key><true/>
   <key>ProcessType</key><string>Standard</string>
   <key>StandardOutPath</key><string>$DATA_DIR/logs/launchd.out</string>
   <key>StandardErrorPath</key><string>$DATA_DIR/logs/launchd.out</string>

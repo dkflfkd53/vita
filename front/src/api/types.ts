@@ -623,6 +623,20 @@ export interface Outcomes {
 }
 
 /** always = 매 세션 통째로 읽힘, onDemand = 관련 있을 때만(메모리 본문), targetTokens = 넣을 곳 지금 크기 */
+/** 버전 업데이트 상태 — behind = 받을 새 커밋 수 */
+export interface UpdateStatus {
+  available: boolean
+  repoDir: string | null
+  branch: string | null
+  current: { sha: string; subject: string; date: string } | null
+  behind: number
+  commits: { sha: string; subject: string; date: string }[]
+  dirty: boolean
+  checkedAt: string
+  error: string | null
+  updating: boolean
+}
+
 export interface AddedLoad {
   always: number
   alwaysChars: number

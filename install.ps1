@@ -55,6 +55,8 @@ $javaw = Join-Path (Split-Path (Get-Command java).Source) 'javaw.exe'
 if (-not (Test-Path $javaw)) { $javaw = (Get-Command java).Source }
 $argList = @('-Xmx512m', '-jar', "`"$Jar`"")
 if ($claude) { $argList += "--worklog.claude-bin=`"$claude`"" }
+# 앱 안 «업데이트» 버튼이 git pull 후 이 스크립트를 다시 돌릴 때 쓰는 저장소 위치
+$argList += "--worklog.repo-dir=`"$PSScriptRoot`""
 $arguments = $argList -join ' '
 try {
     $action = New-ScheduledTaskAction -Execute $javaw -Argument $arguments -WorkingDirectory $DataDir
