@@ -570,11 +570,24 @@ function ImproveTab({ insights, loading }: { insights: Insight[] | undefined; lo
   const items = inStage.filter((i) => !target || i.target === target)
   const tlist = targets.data ?? []
   const mustLeft = list.filter((i) => i.status === 'proposed' && tierOf(i) === 'must').length
+  // 화면 = 제안 · 효과 · 읽히는 양. 처음엔 제안, 남은 제안이 없고 도입한 규칙이 있으면 효과
+  const askedView = params.get('view') as ImproveView | null
+  const view: ImproveView =
+    askedView && VIEWS.includes(askedView) ? askedView : count('proposed') === 0 && count('adopted') + count('done') > 0 ? 'effect' : 'proposals'
+  const goView = (v: ImproveView) => {
+    const next = new URLSearchParams(params)
+    next.set('view', v)
+    ;['st', 'tg', 'ins'].forEach((k) => next.delete(k))
+    setParams(next, { replace: true })
+  }
 
   return (
     <div className="ob">
-      <OutcomeCard defs={defs.data ?? []} />
-      <RuleLoadCard />
+      <ImproveTiles view={view} onPick={goView} insights={list} />
+      {view === 'effect' && <OutcomeCard defs={defs.data ?? []} />}
+      {view === 'load' && <RuleLoadCard />}
+      {view === 'proposals' && (
+        <>
       <ScanBar />
       <div className="ob-stage-bar">
         <div className="segmented" role="tablist" aria-label="개선 단계">
@@ -614,6 +627,119 @@ function ImproveTab({ insights, loading }: { insights: Insight[] | undefined; lo
           ))}
         </div>
       )}
+        </>
+      )}
+    </div>
+  )
+}
+
+type ImproveView = 'proposals' | 'effect' | 'load'
+const VIEWS: ImproveView[] = ['proposals', 'effect', 'load']
+
+/** 재발 합계 — 도입 후 작업이 충분히 쌓인 규칙만 */
+function summarizeOutcomes(rules: Outcome[]) {
+  const ready = rules.filter((r) => r.afterHours >= MIN_AFTER_HOURS)
+  const sum = (f: (r: Outcome) => number) => ready.reduce((s, r) => s + f(r), 0)
+  const bT = sum((r) => r.beforeHours)
+  const aT = sum((r) => r.afterHours)
+  const bRate = bT >= 1 ? (10 * sum((r) => r.beforeHits)) / bT : null
+  const aRate = aT >= 1 ? (10 * sum((r) => r.afterHits)) / aT : null
+  const judged = rules.filter((r) => r.verdict === '개선' || r.verdict === '변화 없음' || r.verdict === '악화')
+  return {
+    ready,
+    bRate,
+    aRate,
+    pct: changePct(bRate, aRate),
+    judged,
+    better: judged.filter((r) => r.verdict === '개선').length,
+    worse: judged.filter((r) => r.verdict === '악화').length,
+    minAfter: rules.length ? Math.min(...rules.map((r) => r.afterHours)) : 0,
+    misplaced: rules.filter((r) => r.repo && r.sourceRepos.length > 0 && !r.sourceRepos.includes(r.repo)).length,
+  }
+}
+
+const fmtTok = (n: number) => (n >= 10000 ? `${(n / 10000).toFixed(1)}만` : n.toLocaleString('en-US'))
+
+/** 개선 탭 요약 타일 — 세 화면의 핵심 숫자를 늘 위에 두고, 누르면 그 화면으로 */
+function ImproveTiles({ view, onPick, insights }: { view: ImproveView; onPick: (v: ImproveView) => void; insights: Insight[] }) {
+  const pending = useQuery({ queryKey: ['insight-pending'], queryFn: () => api.insightPending(), refetchInterval: 60_000 })
+  const outcomes = useQuery({ queryKey: ['outcomes'], queryFn: () => api.outcomes(), staleTime: 60_000 })
+  const load = useRuleLoad()
+  const proposed = insights.filter((i) => i.status === 'proposed').length
+  const must = insights.filter((i) => i.status === 'proposed' && tierOf(i) === 'must').length
+  const unseen = pending.data?.sessions.length ?? 0
+  const rules = outcomes.data?.rules ?? []
+  const missing = outcomes.data?.missingSignals ?? 0
+  const o = summarizeOutcomes(rules)
+  const rows = (load.data ?? []).filter((r) => r.chars > 0)
+  const biggest = rows.reduce<RuleLoad | null>((m, r) => (!m || r.estTokens > m.estTokens ? r : m), null)
+  const over = rows.filter((r) => r.vitaRules >= r.budget).length
+  const diet = rows.reduce((s, r) => s + r.dietPending, 0)
+  const longLines = rows.reduce((s, r) => s + r.longLines, 0)
+
+  const effectTone = o.pct != null && o.pct > 0 ? 'bad' : o.worse > 0 ? 'bad' : o.misplaced > 0 ? 'warn' : o.pct != null && o.pct < 0 ? 'good' : ''
+  const tiles: { key: ImproveView; title: string; big: string; sub: string; tone: string }[] = [
+    {
+      key: 'proposals',
+      title: '개선 제안',
+      big: `${proposed}개`,
+      sub: [must > 0 ? `필수 ${must} 남음` : '필수 없음', unseen > 0 ? `안 본 세션 ${unseen}` : ''].filter(Boolean).join(' · '),
+      tone: must > 0 ? 'bad' : '',
+    },
+    {
+      key: 'effect',
+      title: '도입 효과 · 같은 실수',
+      big:
+        rules.length === 0 && missing === 0
+          ? '—'
+          : o.ready.length === 0
+            ? '판단 이름'
+            : o.pct == null
+              ? '비교 불가'
+              : `${o.pct > 0 ? '+' : ''}${o.pct}%`,
+      sub:
+        rules.length === 0 && missing === 0
+          ? '도입한 규칙이 없어요'
+          : [
+              `지표 개선 ${o.better}/${o.judged.length}`,
+              o.worse > 0 ? `악화 ${o.worse}` : '',
+              o.misplaced > 0 ? `넣은 곳 확인 ${o.misplaced}` : '',
+              missing > 0 ? `신호 없음 ${missing}` : '',
+              o.ready.length === 0 && rules.length > 0 ? `도입 후 ${o.minAfter.toFixed(1)}h` : '',
+            ]
+              .filter(Boolean)
+              .join(' · '),
+      tone: effectTone,
+    },
+    {
+      key: 'load',
+      title: '매 세션 읽히는 양',
+      big: biggest ? `${fmtTok(biggest.estTokens)}토큰` : '—',
+      sub: [
+        biggest ? `가장 큰 곳 ${biggest.label.replace(/ \(.*\)$/, '')}` : '',
+        diet > 0 ? `줄이기 ${diet}줄 대기` : longLines > 0 ? `긴 색인 줄 ${longLines}` : '',
+        over > 0 ? `상한 ${over}곳` : '',
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      tone: over > 0 ? 'bad' : diet > 0 || longLines > 0 ? 'warn' : '',
+    },
+  ]
+  return (
+    <div className="ob-tiles" role="tablist" aria-label="개선 화면">
+      {tiles.map((t) => (
+        <button
+          key={t.key}
+          role="tab"
+          aria-selected={view === t.key}
+          className={`ob-tile${view === t.key ? ' on' : ''}${t.tone ? ` tone-${t.tone}` : ''}`}
+          onClick={() => onPick(t.key)}
+        >
+          <span className="ob-tile-title">{t.title}</span>
+          <b className="ob-tile-big">{t.big}</b>
+          <span className="ob-tile-sub">{t.sub}</span>
+        </button>
+      ))}
     </div>
   )
 }
@@ -647,64 +773,41 @@ function OutcomeCard({ defs }: { defs: MetricDef[] }) {
   }, [doneId, qc])
   const rules = q.data?.rules ?? []
   const missing = q.data?.missingSignals ?? 0
-  if (rules.length === 0 && missing === 0) return null
-  // 합계는 도입 후 작업이 충분히 쌓인 규칙만
-  const ready = rules.filter((r) => r.afterHours >= MIN_AFTER_HOURS)
-  const bH = ready.reduce((s, r) => s + r.beforeHits, 0)
-  const bT = ready.reduce((s, r) => s + r.beforeHours, 0)
-  const aH = ready.reduce((s, r) => s + r.afterHits, 0)
-  const aT = ready.reduce((s, r) => s + r.afterHours, 0)
-  const bRate = bT >= 1 ? (10 * bH) / bT : null
-  const aRate = aT >= 1 ? (10 * aH) / aT : null
-  const pct = changePct(bRate, aRate)
-  const minAfter = Math.min(...rules.map((r) => r.afterHours))
-  const judged = rules.filter((r) => r.verdict === '개선' || r.verdict === '변화 없음' || r.verdict === '악화')
-  const better = judged.filter((r) => r.verdict === '개선').length
+  const { ready, bRate, aRate, pct, minAfter, judged, better } = summarizeOutcomes(rules)
+  if (rules.length === 0 && missing === 0) {
+    return <div className="ob-note">도입한 규칙이 없어요. 제안을 도입하면 여기서 같은 실수가 얼마나 줄었는지 보여줘요.</div>
+  }
   return (
     <section className="ob-outcome">
       <div className="ob-load-head">
         <b>도입 효과</b>
         <span className="subtle">도입한 규칙마다 같은 실수가 다시 난 횟수(작업 10시간당, 도입 전 28일 ↔ 도입 후)와 고른 병목 지표의 변화예요.</span>
       </div>
-      <div className="ob-outcome-figs">
-        <div className="ob-fig">
-          <span className="subtle">같은 실수 재발 · 10시간당</span>
+      <div className="ob-outcome-bar">
+        <span>
           {ready.length > 0 ? (
             <>
-              <b className="num">
+              같은 실수 10시간당{' '}
+              <b>
                 {rateText(bRate)} → {rateText(aRate)}회
               </b>
-              {pct != null && <span className={pct < 0 ? 'good' : pct > 0 ? 'bad' : 'subtle'}>{pct > 0 ? `+${pct}` : pct}%</span>}
-              {ready.length < rules.length && <span className="subtle">규칙 {ready.length}개 기준(나머지는 판단 이름)</span>}
+              {pct != null && <span className={pct < 0 ? 'good' : pct > 0 ? 'bad' : 'subtle'}> {pct > 0 ? `+${pct}` : pct}%</span>}
+              {ready.length < rules.length && <span className="subtle"> (규칙 {ready.length}개 기준)</span>}
             </>
           ) : (
-            <>
-              <b className="num">판단 이름</b>
-              <span className="subtle">
-                도입 후 작업 {minAfter.toFixed(1)}시간 — {MIN_AFTER_HOURS}시간 넘으면 비교해요
-              </span>
-            </>
-          )}
-        </div>
-        <div className="ob-fig">
-          <span className="subtle">병목 지표가 좋아진 규칙</span>
-          <b className="num">
-            {better} / {judged.length}
-          </b>
-          <span className="subtle">{rules.length - judged.length > 0 && `판단 전 ${rules.length - judged.length}개`}</span>
-        </div>
-        <div className="ob-fig">
-          <span className="subtle">재발을 세는 규칙</span>
-          <b className="num">{rules.length}개</b>
-          {missing > 0 && (
-            <span className="ob-fig-act">
-              <span className="subtle">신호 없는 규칙 {missing}개</span>
-              <button className="btn btn-sm" onClick={() => start.mutate(undefined)} disabled={!!running || start.isPending} title="같은 실수가 다시 나면 명령·오류·정정 요청에 나올 문자열을 AI 가 골라요">
-                {running ? (running.message ?? '고르는 중') : '재발 신호 만들기'}
-              </button>
+            <span className="subtle">
+              같은 실수 비교는 도입 후 작업이 {MIN_AFTER_HOURS}시간 넘으면 — 지금 {minAfter.toFixed(1)}시간
             </span>
           )}
-        </div>
+        </span>
+        <span className="subtle">
+          지표 개선 {better}/{judged.length} · 재발을 세는 규칙 {rules.length}개{missing > 0 && ` · 신호 없는 규칙 ${missing}개`}
+        </span>
+        {missing > 0 && (
+          <button className="btn btn-sm" onClick={() => start.mutate(undefined)} disabled={!!running || start.isPending} title="같은 실수가 다시 나면 명령·오류·정정 요청에 나올 문자열을 AI 가 골라요">
+            {running ? (running.message ?? '고르는 중') : '재발 신호 만들기'}
+          </button>
+        )}
       </div>
       {rules.map((o) => (
         <OutcomeRow key={o.id} o={o} def={defs.find((d) => d.key === o.metric)} />
@@ -736,7 +839,8 @@ function OutcomeRow({ o, def }: { o: Outcome; def: MetricDef | undefined }) {
         </span>
         {o.repo && o.sourceRepos.length > 0 && !o.sourceRepos.includes(o.repo) && (
           <span className="ob-outcome-warn">
-            문제는 {o.sourceRepos.join(', ')} 세션에서 났는데 {o.repo} 에 넣었어요 — 그 세션은 이 규칙을 안 읽어요
+            문제는 {o.sourceRepos.join(', ')} 세션에서 났는데 {o.repo} 에 넣었어요 — 그 세션은 이 규칙을 안 읽어요.{' '}
+            <Link to={`/ai?tab=improve&view=proposals&st=${o.status}&ins=${o.id}`}>규칙 카드로</Link>
           </span>
         )}
         {o.beforeHits === 0 && o.afterHits === 0 && <span className="subtle">도입 전후 모두 0회 — 펼친 카드에서 재발 신호가 맞는지 확인하세요</span>}
@@ -838,7 +942,13 @@ const useRuleLoad = () => useQuery({ queryKey: ['rule-load'], queryFn: () => api
 /** 매 세션 읽히는 양 — md·메모리 색인은 세션을 열 때마다 통째로 읽힌다. 메모리 색인은 줄이기 제안까지 */
 function RuleLoadCard() {
   const load = useRuleLoad()
+  const [params] = useSearchParams()
+  const focus = params.get('tg')
   const [open, setOpen] = useState<string | null>(null)
+  const focusRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (focus && load.data) focusRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [focus, load.data])
   const rows = (load.data ?? []).filter((r) => r.chars > 0)
   if (rows.length === 0) return null
   const max = Math.max(...rows.map((r) => r.estTokens))
@@ -854,7 +964,7 @@ function RuleLoadCard() {
       {rows.map((r) => {
         const over = r.vitaRules >= r.budget
         return (
-          <div key={r.target} className="ob-load-item">
+          <div key={r.target} className={`ob-load-item${focus === r.target ? ' focus' : ''}`} ref={focus === r.target ? focusRef : undefined}>
             <div className="ob-load-row">
               <span className="ob-load-name" title={r.file}>
                 {r.label}
@@ -1028,10 +1138,10 @@ function LoadChip({ insight: i, over }: { insight: Insight; over: boolean }) {
       (over ? '\n이 곳은 Vita 규칙 상한이에요 — 효과 없는 규칙부터 빼는 걸 권해요' : '')
     : `이 규칙이 매 세션 약 ${tok(l.always)} 읽혀요` + (l.onDemand > 0 ? ` + 관련 있을 때 본문 ${tok(l.onDemand)}` : '')
   return (
-    <span className={`ob-load-chip${over && proposed ? ' over' : ''}`} title={tip}>
+    <Link className={`ob-load-chip${over && proposed ? ' over' : ''}`} title={`${tip}\n누르면 읽히는 양 화면`} to={`/ai?tab=improve&view=load&tg=${encodeURIComponent(i.target ?? '')}`}>
       {proposed ? `+${tok(l.always)}/세션` : `${tok(l.always)}/세션`}
       {over && proposed && ' · 상한'}
-    </span>
+    </Link>
   )
 }
 
@@ -1248,7 +1358,13 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
   const err = [patch, adopt, revert, close, reopen, remove, write].find((m) => m.isError)?.error as Error | undefined
   const target = targets.find((t) => t.key === i.target)
   const [copied, setCopied] = useState(false)
-  const [open, setOpen] = useState(false)
+  const [params] = useSearchParams()
+  const focused = params.get('ins') === String(i.id)
+  const [open, setOpen] = useState(focused)
+  const cardRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    if (focused) cardRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [focused])
   const tier = TIERS.find((t) => t.key === tierOf(i))!
   // 선택 규칙이 측정해 보니 효과가 없으면 빼기를 권한다
   const dropHint = tierOf(i) === 'optional' && (i.status === 'adopted' || i.status === 'done') && (i.verdict === '변화 없음' || i.verdict === '악화')
@@ -1264,7 +1380,7 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
     const measured = i.status === 'adopted' || i.status === 'done'
     const canDrop = i.status === 'done' && (v === '변화 없음' || v === '악화')
     return (
-      <article className={`ob-ins ${i.status} compact`}>
+      <article className={`ob-ins ${i.status} compact`} ref={cardRef}>
         <div className="ob-row">
           <span className={`ob-tier-chip ${tier.key}`} title={i.tierReason ?? tier.tip}>
             {tier.name}
@@ -1352,7 +1468,7 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
   }
 
   return (
-    <article className={`ob-ins ${i.status}`}>
+    <article className={`ob-ins ${i.status}${focused ? ' focus' : ''}`} ref={cardRef}>
       <div className="ob-ins-top">
         {editable ? (
           <InlineText className="ob-ins-title" value={i.title} onSave={(v) => v && patch.mutate({ title: v })} />
