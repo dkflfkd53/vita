@@ -24,10 +24,14 @@ import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.worklog.agent.ObserverCalc.Data;
+import com.worklog.agent.ObserverViews.AddedLoad;
 import com.worklog.agent.ObserverViews.Insight;
 import com.worklog.agent.ObserverViews.InsightRequest;
 import com.worklog.agent.ObserverViews.MetricDef;
 import com.worklog.agent.ObserverViews.Observer;
+import com.worklog.agent.ObserverViews.Outcome;
+import com.worklog.agent.ObserverViews.OutcomeWeek;
+import com.worklog.agent.ObserverViews.Outcomes;
 import com.worklog.agent.ObserverViews.Pending;
 import com.worklog.agent.ObserverViews.PendingSession;
 import com.worklog.agent.ObserverViews.Snapshot;
@@ -73,6 +77,7 @@ public class ObserverService {
     private final CollectScheduler collector;
     private final ProjectScope scope;
     private final TaskCatalog catalog;
+    private final RuleLoadService ruleLoad;
 
     public Observer observer(String weekKey, String scope) {
         return observer("week", weekKey, scope);
@@ -125,10 +130,12 @@ public class ObserverService {
         Data data = earliest.map(e -> calc.load(e, today)).orElse(null);
         Map<String, Target> tmap = new HashMap<>();
         targets.list().forEach(t -> tmap.put(t.key(), t));
-        return rows.stream().map(r -> view(r, data, today, tmap)).toList();
+        Map<String, Integer> loads = new HashMap<>();
+        ruleLoad.load().forEach(l -> loads.put(l.target(), l.estTokens()));
+        return rows.stream().map(r -> view(r, data, today, tmap, loads)).toList();
     }
 
-    private Insight view(InsightRow r, Data data, LocalDate today, Map<String, Target> tmap) {
+    private Insight view(InsightRow r, Data data, LocalDate today, Map<String, Target> tmap, Map<String, Integer> loads) {
         Double after = r.result;
         String afterFrom = r.resultFrom;
         String afterTo = r.resultTo;
@@ -148,7 +155,14 @@ public class ObserverService {
                 t == null ? r.target : t.label(), t == null ? null : t.path(), r.snippet, r.status, r.adoptedAt, r.appliedPath,
                 r.target != null && targets.applied(r.id, r.target), r.baseline, r.baselineFrom, r.baselineTo, after,
                 afterFrom, afterTo, days, delta(r.baseline, after), verdict, r.closedAt, r.note, r.tier, r.tierReason, r.effect,
-                r.sessions);
+                r.sessions, addedLoad(r, loads), r.signals);
+    }
+
+    /** 넣을 곳 무게(한 번에 읽어 둠) + 이 규칙이 더하는 양 */
+    private AddedLoad addedLoad(InsightRow r, Map<String, Integer> loads) {
+        String[] t = InsightTargets.addedText(r.id, r.target, r.title, r.problem, r.snippet);
+        return new AddedLoad(RuleLoadService.estTokens(t[0]), t[0].length(), RuleLoadService.estTokens(t[1]),
+                r.target == null ? 0 : loads.getOrDefault(r.target, 0));
     }
 
     public long create(InsightRequest req, String source, String weekKey) {
@@ -158,12 +172,13 @@ public class ObserverService {
         validate(req);
         return jdbc.sql("""
                 INSERT INTO agent_insight (created_at, week_key, source, title, problem, metric, scope, target, snippet, status, note,
-                                           tier, tier_reason, effect, sessions)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'proposed', ?, ?, ?, ?, ?) RETURNING id
+                                           tier, tier_reason, effect, sessions, signals)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'proposed', ?, ?, ?, ?, ?, ?) RETURNING id
                 """).params(Instant.now().toString(), weekKey == null ? Period.weekKey(LocalDate.now(props.zone())) : weekKey,
                 source, req.title().strip(), blankToNull(req.problem()), blankToNull(req.metric()), normalizeScope(req.scope()),
                 blankToNull(req.target()), blankToNull(req.snippet()), blankToNull(req.note()), tierOf(req.tier()),
-                blankToNull(req.tierReason()), blankToNull(req.effect()), sessionsJson(req.sessions())).query(Long.class).single();
+                blankToNull(req.tierReason()), blankToNull(req.effect()), sessionsJson(req.sessions()), signalsJson(req.signals()))
+                .query(Long.class).single();
     }
 
     public void update(long id, InsightRequest req) {
@@ -182,6 +197,9 @@ public class ObserverService {
         set(id, "note", req.note());
         set(id, "tier", req.tier() == null ? null : tierOf(req.tier()));
         set(id, "tier_reason", req.tierReason());
+        if (req.signals() != null) {
+            jdbc.sql("UPDATE agent_insight SET signals = ? WHERE id = ?").params(signalsJson(req.signals()), id).update();
+        }
         set(id, "effect", req.effect());
         if (req.status() != null) {
             if (!List.of("proposed", "rejected").contains(req.status())) {
@@ -262,7 +280,7 @@ public class ObserverService {
                 }
                 create(new InsightRequest(title, from.problem, from.metric, from.scope, from.target, n.path("snippet").asText(null),
                         from.note, null, tierOf(n.path("tier").asText(null)), n.path("tierReason").asText(null),
-                        n.path("effect").asText(null), from.sessions), from.source, from.weekKey);
+                        n.path("effect").asText(null), from.sessions, from.signals), from.source, from.weekKey);
                 replaced.add(from.id);
                 count++;
             }
@@ -499,6 +517,10 @@ public class ObserverService {
                 - tierReason = 그 단계인 이유 한 줄(숫자 포함, 30자 안팎). effect = 넣으면 무엇이 얼마나 줄지 한 줄(예: "python 실패 주 23회 중 대부분 제거").
                 - 지금 규칙에 이미 있는 내용은 다시 제안하지 않는다. 이미 있는 제안 목록과도 겹치지 않게.
                 - metric 은 효과를 확인할 지표 키 하나. 그 지표가 실제로 움직일 개선만 고른다.
+                - signals = 재발 횟수를 셀 짧은 문자열 1~4개. 기본은 실패한 도구의 오류 문구·거절된 명령·사용자 정정 요청에서만 센다
+                  (예: "No such file", "denied by the auto mode classifier", "그게 아니라"). 명령을 실행한 것 자체가 실수면
+                  앞에 cmd: 를 붙인다(성공해도 센다, 예: "cmd:sleep 600", "cmd:push origin HEAD:main").
+                  바라는 행동(읽어야 할 문서 이름 등)이나 주제 낱말(폐쇄망, docker load), 흔한 낱말 하나(git, sleep)는 금지.
                 - sessions = 이 문제가 실제로 일어난 세션 제목 1~3개. 입력(정정 요청·도구 실패·여러 번 고친 파일·비용 큰 세션)의 [세션 제목]을 글자 그대로.
                 - scope 는 아래 '범위' 중 하나 또는 null(전체). target 은 아래 '넣을 곳' 키 중 하나 — 문제가 한 저장소 세션에서만 났으면 그 저장소 memory,
                   여러 저장소에 걸쳤으면 global(그 저장소 세션만 규칙을 읽으므로).
@@ -506,7 +528,7 @@ public class ObserverService {
 
                 출력은 JSON 배열 하나만(설명·코드블록 표시 없이):
                 [{"title":"한 줄 제목","tier":"must|recommend|optional","tierReason":"단계 이유 한 줄","effect":"예상 효과 한 줄",
-                  "problem":"근거 — 숫자 포함 1~2문장","sessions":["세션 제목"],"metric":"지표 키","scope":"범위 또는 null","target":"넣을 곳 키",
+                  "problem":"근거 — 숫자 포함 1~2문장","sessions":["세션 제목"],"signals":["재발 신호"],"metric":"지표 키","scope":"범위 또는 null","target":"넣을 곳 키",
                   "snippet":"- 규칙 문안 1줄"}]
 
                 """.replace("%s", switch (o.kind()) {
@@ -570,6 +592,7 @@ public class ObserverService {
         sb.append("\n## 범위(scope)\n").append(scope.labels().isEmpty() ? "(없음 — null)" : String.join(", ", scope.labels())).append("\n");
         sb.append("\n## 넣을 곳 (target 키 — 설명)\n");
         targets.list().forEach(t -> sb.append("- ").append(t.key()).append(" — ").append(t.label()).append('\n'));
+        sb.append("\n## 넣을 곳 무게 (매 세션 통째로 읽힘 — 상한이면 그곳엔 새 규칙을 내지 말 것)\n").append(ruleLoad.summaryForPrompt());
         sb.append("\n## 이미 있는 제안(겹치지 말 것)\n");
         insightRows().stream().filter(r -> !"rejected".equals(r.status))
                 .forEach(r -> sb.append("- [").append(r.status).append("] ").append(r.title).append('\n'));
@@ -603,7 +626,7 @@ public class ObserverService {
                     scope != null && this.scope.labels().contains(scope) ? scope : null,
                     recommendTarget(tmap.containsKey(target) ? target : "global", sessions, tmap),
                     n.path("snippet").asText(null), null, null, tierOf(n.path("tier").asText(null)),
-                    n.path("tierReason").asText(null), n.path("effect").asText(null), sessions));
+                    n.path("tierReason").asText(null), n.path("effect").asText(null), sessions, readSignals(n.path("signals"))));
         }
         return list.stream().limit(5).toList();
     }
@@ -697,6 +720,215 @@ public class ObserverService {
         }
     }
 
+    // ───────── 재발 신호 · 도입 효과 ─────────
+
+    private static final int OUTCOME_DAYS = 28;
+    private static final int OUTCOME_WEEKS_BEFORE = 5;
+
+    static String signalsJson(List<String> signals) {
+        List<String> clean = signals == null ? List.of()
+                : signals.stream().filter(x -> x != null && x.strip().length() >= 3).map(String::strip).distinct().limit(6).toList();
+        if (clean.isEmpty()) {
+            return null;
+        }
+        try {
+            return MAPPER.writeValueAsString(clean);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    static List<String> readSignals(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return readSignals(MAPPER.readTree(json));
+        } catch (IOException e) {
+            return List.of();
+        }
+    }
+
+    static List<String> readSignals(JsonNode arr) {
+        List<String> out = new ArrayList<>();
+        if (arr != null && arr.isArray()) {
+            arr.forEach(x -> {
+                String v = x.asText("").strip();
+                if (v.length() >= 3 && !out.contains(v)) {
+                    out.add(v);
+                }
+            });
+        }
+        return out.stream().limit(6).toList();
+    }
+
+    /**
+     * 도구 호출이 재발인가. cmd: 신호는 명령에 들어 있으면(성공해도), 기본 신호는 실패·거절된 호출의 명령·오류 문구에 들어 있을 때만
+     */
+    static boolean toolHit(List<String> lowered, String status, String target, String errorText) {
+        List<String> cmd = lowered.stream().filter(k -> k.startsWith("cmd:")).map(k -> k.substring(4).strip()).filter(k -> !k.isEmpty()).toList();
+        List<String> plain = lowered.stream().filter(k -> !k.startsWith("cmd:")).toList();
+        if (hit(cmd, target)) {
+            return true;
+        }
+        return ("error".equals(status) || "rejected".equals(status)) && hit(plain, target, errorText);
+    }
+
+    /** 정정 요청 글에 기본 신호가 있나(cmd: 신호는 명령 전용) */
+    static boolean promptHit(List<String> lowered, String text) {
+        return hit(lowered.stream().filter(k -> !k.startsWith("cmd:")).toList(), text);
+    }
+
+    /** 글에 신호가 글자 그대로(대소문자 무시) */
+    static boolean hit(List<String> lowered, String... texts) {
+        for (String t : texts) {
+            if (t == null) {
+                continue;
+            }
+            String l = t.toLowerCase(Locale.ROOT);
+            for (String k : lowered) {
+                if (l.contains(k)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** 도입한 규칙마다 재발 추이(주별)·도입 전후 10시간당 재발·지표 전후 */
+    public Outcomes outcomes() {
+        List<InsightRow> rows = insightRows().stream()
+                .filter(r -> ("adopted".equals(r.status) || "done".equals(r.status)) && r.adoptedAt != null).toList();
+        int missing = (int) rows.stream().filter(r -> r.signals.isEmpty()).count();
+        List<InsightRow> withSignals = rows.stream().filter(r -> !r.signals.isEmpty()).toList();
+        if (withSignals.isEmpty()) {
+            return new Outcomes(List.of(), missing);
+        }
+        LocalDate today = LocalDate.now(props.zone());
+        LocalDate earliest = withSignals.stream().map(r -> day(r.adoptedAt)).min(Comparator.naturalOrder()).orElse(today);
+        LocalDate loadFrom = Period.containing("week", earliest.minusWeeks(OUTCOME_WEEKS_BEFORE)).from();
+        if (loadFrom.isAfter(earliest.minusDays(OUTCOME_DAYS))) {
+            loadFrom = earliest.minusDays(OUTCOME_DAYS);
+        }
+        Data all = calc.load(loadFrom, today);
+        Map<String, InsightInfo> infos = new HashMap<>();
+        insights().forEach(i -> infos.put(String.valueOf(i.id()), new InsightInfo(i.after(), i.deltaPct(), i.verdict())));
+        List<Outcome> out = new ArrayList<>();
+        for (InsightRow r : withSignals) {
+            String repo = repoOfTarget(r.target);
+            Set<String> ids = repo == null ? null : sessionsOfRepo(repo);
+            Data d = ids == null ? all : calc.onlySessions(all, ids);
+            List<String> keys = r.signals.stream().map(k -> k.toLowerCase(Locale.ROOT)).toList();
+            LocalDate adopted = day(r.adoptedAt);
+            Map<String, Integer> hitsByDay = new HashMap<>();
+            d.tools().forEach(c -> {
+                if (toolHit(keys, c.status(), c.target(), c.errorText())) {
+                    hitsByDay.merge(c.day(), 1, Integer::sum);
+                }
+            });
+            d.prompts().forEach(p -> {
+                if (ObserverCalc.isCorrection(p.text()) && promptHit(keys, p.text())) {
+                    hitsByDay.merge(p.day(), 1, Integer::sum);
+                }
+            });
+            Map<String, Long> secByDay = new HashMap<>();
+            d.days().forEach(x -> secByDay.merge(x.day(), x.activeSec(), Long::sum));
+            // 주별
+            List<OutcomeWeek> weeks = new ArrayList<>();
+            for (Period w = Period.containing("week", adopted.minusWeeks(OUTCOME_WEEKS_BEFORE)); !w.from().isAfter(today); w = w.next()) {
+                int h = 0;
+                long sec = 0;
+                for (LocalDate x = w.from(); !x.isAfter(w.to()); x = x.plusDays(1)) {
+                    h += hitsByDay.getOrDefault(x.toString(), 0);
+                    sec += secByDay.getOrDefault(x.toString(), 0L);
+                }
+                weeks.add(new OutcomeWeek(w.key(), w.from().toString(), h, sec));
+            }
+            // 도입 전 28일 / 도입 후(오늘까지, 최대 28일)
+            int[] bh = {0};
+            long[] bs = {0};
+            int[] ah = {0};
+            long[] as = {0};
+            LocalDate afterEnd = adopted.plusDays(OUTCOME_DAYS - 1).isAfter(today) ? today : adopted.plusDays(OUTCOME_DAYS - 1);
+            for (LocalDate x = adopted.minusDays(OUTCOME_DAYS); x.isBefore(adopted); x = x.plusDays(1)) {
+                bh[0] += hitsByDay.getOrDefault(x.toString(), 0);
+                bs[0] += secByDay.getOrDefault(x.toString(), 0L);
+            }
+            for (LocalDate x = adopted; !x.isAfter(afterEnd); x = x.plusDays(1)) {
+                ah[0] += hitsByDay.getOrDefault(x.toString(), 0);
+                as[0] += secByDay.getOrDefault(x.toString(), 0L);
+            }
+            InsightInfo info = infos.get(String.valueOf(r.id));
+            out.add(new Outcome(r.id, r.title, r.status, r.adoptedAt, r.signals, repo, weeks,
+                    Period.containing("week", adopted).key(), bh[0], bs[0] / 3600.0, ah[0], as[0] / 3600.0,
+                    rate(bh[0], bs[0]), rate(ah[0], as[0]), r.metric, r.baseline, info == null ? null : info.after(),
+                    info == null ? null : info.deltaPct(), info == null ? r.verdict : info.verdict(),
+                    r.sessions.stream().map(SourceSession::repo).filter(x -> x != null).distinct().toList()));
+        }
+        return new Outcomes(out, missing);
+    }
+
+    private record InsightInfo(Double after, Double deltaPct, String verdict) {
+    }
+
+    /** 작업 10시간당 횟수 — 1시간 미만이면 비교 불가 */
+    private static Double rate(int hits, long sec) {
+        return sec < 3600 ? null : hits / (sec / 36000.0);
+    }
+
+    private static String repoOfTarget(String target) {
+        if (target == null) {
+            return null;
+        }
+        int c = target.indexOf(':');
+        return c > 0 && !target.startsWith("codex") ? target.substring(c + 1) : null;
+    }
+
+    private Set<String> sessionsOfRepo(String repo) {
+        return new HashSet<>(jdbc.sql("SELECT id FROM session WHERE project = ?").param(repo).query(String.class).list());
+    }
+
+    /** 재발 신호가 없는 제안(기각 제외)에 AI 로 신호를 붙인다 */
+    public JobService.Job submitSignals() {
+        return jobs.submit("observer:signals", "재발 신호 만들기", progress -> {
+            List<InsightRow> rows = insightRows().stream().filter(r -> r.signals.isEmpty() && !"rejected".equals(r.status)).toList();
+            if (rows.isEmpty()) {
+                return "신호가 빠진 제안이 없어요";
+            }
+            StringBuilder sb = new StringBuilder("""
+                    아래 개선 규칙마다, 같은 실수가 다시 났는지 셀 짧은 문자열(재발 신호) 1~4개를 고른다.
+                    기본 신호는 실패한 도구의 오류 문구·거절된 명령·사용자 정정 요청 글에서만 센다
+                    (예: "No such file", "denied by the auto mode classifier", "그게 아니라").
+                    명령을 실행한 것 자체가 실수면 앞에 cmd: 를 붙인다 — 성공해도 센다(예: "cmd:sleep 600", "cmd:push origin HEAD:main").
+                    금지: 바라는 행동(읽어야 할 문서 이름 등), 주제 낱말(폐쇄망, docker load), 흔한 낱말 하나(git, sleep, main).
+                    출력은 JSON 배열 하나만: [{"id":번호,"signals":["…"]}]
+
+                    """);
+            rows.forEach(r -> sb.append("## #").append(r.id).append(' ').append(r.title).append('\n')
+                    .append("근거: ").append(r.problem == null ? "" : r.problem).append('\n')
+                    .append("규칙: ").append(r.snippet == null ? "" : r.snippet).append("\n\n"));
+            progress.update("Claude 가 제안 " + rows.size() + "개의 재발 신호를 고르는 중");
+            String out = claude.ask(sb.toString());
+            int s0 = out.indexOf('[');
+            int e0 = out.lastIndexOf(']');
+            if (s0 < 0 || e0 <= s0) {
+                throw new IOException("신호를 JSON 으로 받지 못함");
+            }
+            Set<Long> ok = new HashSet<>();
+            rows.forEach(r -> ok.add(r.id));
+            int n = 0;
+            for (JsonNode x : MAPPER.readTree(out.substring(s0, e0 + 1))) {
+                long id = x.path("id").asLong(-1);
+                String json = signalsJson(readSignals(x.path("signals")));
+                if (ok.contains(id) && json != null) {
+                    jdbc.sql("UPDATE agent_insight SET signals = ? WHERE id = ? AND signals IS NULL").params(json, id).update();
+                    n++;
+                }
+            }
+            return "제안 " + n + "개에 재발 신호를 붙였어요";
+        });
+    }
+
     // ───────── 내부 ─────────
 
     private record Window(LocalDate from, LocalDate to) {
@@ -741,13 +973,14 @@ public class ObserverService {
         Double baseline, result;
         String baselineFrom, baselineTo, resultFrom, resultTo, verdict, closedAt, note, tier, tierReason, effect;
         List<SourceSession> sessions = List.of();
+        List<String> signals = List.of();
     }
 
     private List<InsightRow> insightRows() {
         return jdbc.sql("""
                 SELECT id, created_at, week_key, source, title, problem, metric, scope, target, snippet, status, adopted_at,
                        applied_path, baseline, baseline_from, baseline_to, result, result_from, result_to, verdict, closed_at, note,
-                       tier, tier_reason, effect, sessions
+                       tier, tier_reason, effect, sessions, signals
                 FROM agent_insight
                 ORDER BY CASE status WHEN 'adopted' THEN 0 WHEN 'proposed' THEN 1 WHEN 'done' THEN 2 ELSE 3 END, id DESC
                 """).query((rs, i) -> {
@@ -778,6 +1011,7 @@ public class ObserverService {
             r.tierReason = rs.getString(24);
             r.effect = rs.getString(25);
             r.sessions = readSessions(rs.getString(26));
+            r.signals = readSignals(rs.getString(27));
             return r;
         }).list();
     }

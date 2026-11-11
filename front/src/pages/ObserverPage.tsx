@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLastJob, useRunningJob, useSettings, useStartJob } from '../api/hooks'
 import { api } from '../api/client'
-import type { Insight, InsightPatch, InsightTarget, InsightTier, MetricDef, Observer, ObsBreakdown, PeriodKind } from '../api/types'
+import type { DietItem, Insight, Outcome, InsightPatch, InsightTarget, InsightTier, MetricDef, Observer, ObsBreakdown, PeriodKind, RuleLoad } from '../api/types'
 import { Icon } from '../components/Icon'
 import { ErrorBox, Loading, ProjectLabel } from '../components/common'
 import { UsageOverviewSection } from '../components/UsageOverview'
@@ -543,6 +543,8 @@ function useInsightMutation<T>(fn: (arg: T) => Promise<unknown>) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['insights'] })
       qc.invalidateQueries({ queryKey: ['observer'] })
+      qc.invalidateQueries({ queryKey: ['rule-load'] })
+      qc.invalidateQueries({ queryKey: ['outcomes'] })
     },
   })
 }
@@ -571,6 +573,8 @@ function ImproveTab({ insights, loading }: { insights: Insight[] | undefined; lo
 
   return (
     <div className="ob">
+      <OutcomeCard defs={defs.data ?? []} />
+      <RuleLoadCard />
       <ScanBar />
       <div className="ob-stage-bar">
         <div className="segmented" role="tablist" aria-label="개선 단계">
@@ -619,6 +623,422 @@ const EMPTY: Record<Stage, string> = {
   adopted: '측정 중인 규칙이 없어요. 제안을 도입하면 여기서 도입 전후를 비교해요.',
   done: '측정이 끝난 규칙이 아직 없어요.',
   rejected: '기각한 제안이 없어요.',
+}
+
+/** 도입 후 작업이 이만큼은 쌓여야 10시간당 재발을 비교한다(그 전엔 한두 번에 크게 흔들림) */
+const MIN_AFTER_HOURS = 5
+const rateText = (v: number | null) => (v == null ? '–' : v < 10 ? v.toFixed(1) : String(Math.round(v)))
+const changePct = (b: number | null, a: number | null) => (b == null || a == null || b === 0 ? null : Math.round((100 * (a - b)) / b))
+const md = (ymdStr: string) => `${Number(ymdStr.slice(5, 7))}/${Number(ymdStr.slice(8, 10))}`
+
+/** 도입 효과 — 규칙을 넣은 뒤 같은 실수가 얼마나 줄었나(작업 10시간당 재발)와 병목 지표가 어떻게 바뀌었나 */
+function OutcomeCard({ defs }: { defs: MetricDef[] }) {
+  const qc = useQueryClient()
+  const q = useQuery({ queryKey: ['outcomes'], queryFn: () => api.outcomes(), staleTime: 60_000 })
+  const running = useRunningJob('observer:signals')
+  const last = useLastJob('observer:signals')
+  const start = useStartJob(() => api.insightSignals())
+  const doneId = last?.status === 'DONE' ? last.id : null
+  useEffect(() => {
+    if (doneId) {
+      qc.invalidateQueries({ queryKey: ['outcomes'] })
+      qc.invalidateQueries({ queryKey: ['insights'] })
+    }
+  }, [doneId, qc])
+  const rules = q.data?.rules ?? []
+  const missing = q.data?.missingSignals ?? 0
+  if (rules.length === 0 && missing === 0) return null
+  // 합계는 도입 후 작업이 충분히 쌓인 규칙만
+  const ready = rules.filter((r) => r.afterHours >= MIN_AFTER_HOURS)
+  const bH = ready.reduce((s, r) => s + r.beforeHits, 0)
+  const bT = ready.reduce((s, r) => s + r.beforeHours, 0)
+  const aH = ready.reduce((s, r) => s + r.afterHits, 0)
+  const aT = ready.reduce((s, r) => s + r.afterHours, 0)
+  const bRate = bT >= 1 ? (10 * bH) / bT : null
+  const aRate = aT >= 1 ? (10 * aH) / aT : null
+  const pct = changePct(bRate, aRate)
+  const minAfter = Math.min(...rules.map((r) => r.afterHours))
+  const judged = rules.filter((r) => r.verdict === '개선' || r.verdict === '변화 없음' || r.verdict === '악화')
+  const better = judged.filter((r) => r.verdict === '개선').length
+  return (
+    <section className="ob-outcome">
+      <div className="ob-load-head">
+        <b>도입 효과</b>
+        <span className="subtle">도입한 규칙마다 같은 실수가 다시 난 횟수(작업 10시간당, 도입 전 28일 ↔ 도입 후)와 고른 병목 지표의 변화예요.</span>
+      </div>
+      <div className="ob-outcome-figs">
+        <div className="ob-fig">
+          <span className="subtle">같은 실수 재발 · 10시간당</span>
+          {ready.length > 0 ? (
+            <>
+              <b className="num">
+                {rateText(bRate)} → {rateText(aRate)}회
+              </b>
+              {pct != null && <span className={pct < 0 ? 'good' : pct > 0 ? 'bad' : 'subtle'}>{pct > 0 ? `+${pct}` : pct}%</span>}
+              {ready.length < rules.length && <span className="subtle">규칙 {ready.length}개 기준(나머지는 판단 이름)</span>}
+            </>
+          ) : (
+            <>
+              <b className="num">판단 이름</b>
+              <span className="subtle">
+                도입 후 작업 {minAfter.toFixed(1)}시간 — {MIN_AFTER_HOURS}시간 넘으면 비교해요
+              </span>
+            </>
+          )}
+        </div>
+        <div className="ob-fig">
+          <span className="subtle">병목 지표가 좋아진 규칙</span>
+          <b className="num">
+            {better} / {judged.length}
+          </b>
+          <span className="subtle">{rules.length - judged.length > 0 && `판단 전 ${rules.length - judged.length}개`}</span>
+        </div>
+        <div className="ob-fig">
+          <span className="subtle">재발을 세는 규칙</span>
+          <b className="num">{rules.length}개</b>
+          {missing > 0 && (
+            <span className="ob-fig-act">
+              <span className="subtle">신호 없는 규칙 {missing}개</span>
+              <button className="btn btn-sm" onClick={() => start.mutate(undefined)} disabled={!!running || start.isPending} title="같은 실수가 다시 나면 명령·오류·정정 요청에 나올 문자열을 AI 가 골라요">
+                {running ? (running.message ?? '고르는 중') : '재발 신호 만들기'}
+              </button>
+            </span>
+          )}
+        </div>
+      </div>
+      {rules.map((o) => (
+        <OutcomeRow key={o.id} o={o} def={defs.find((d) => d.key === o.metric)} />
+      ))}
+    </section>
+  )
+}
+
+/** 규칙 하나 — 주별 재발 막대(도입 주에 세로선) + 도입 전후 숫자 */
+function OutcomeRow({ o, def }: { o: Outcome; def: MetricDef | undefined }) {
+  const [hover, setHover] = useState<number | null>(null)
+  const n = o.weeks.length
+  const W = 300
+  const H = 64
+  const top = 14
+  const band = W / Math.max(1, n)
+  const bw = Math.min(14, band * 0.6)
+  const max = Math.max(1, ...o.weeks.map((w) => w.hits))
+  const adoptIdx = o.weeks.findIndex((w) => w.week === o.adoptedWeek)
+  const early = o.afterHours < MIN_AFTER_HOURS
+  const pct = early ? null : changePct(o.beforeRate, o.afterRate)
+  const w = hover != null ? o.weeks[hover] : null
+  return (
+    <div className="ob-outcome-row">
+      <div className="ob-outcome-title">
+        <b>{o.title}</b>
+        <span className="subtle">
+          {o.repo ? `${o.repo} 세션` : '전체 세션'} · 신호 {o.signals.map((s) => `“${s}”`).join(', ')}
+        </span>
+        {o.repo && o.sourceRepos.length > 0 && !o.sourceRepos.includes(o.repo) && (
+          <span className="ob-outcome-warn">
+            문제는 {o.sourceRepos.join(', ')} 세션에서 났는데 {o.repo} 에 넣었어요 — 그 세션은 이 규칙을 안 읽어요
+          </span>
+        )}
+        {o.beforeHits === 0 && o.afterHits === 0 && <span className="subtle">도입 전후 모두 0회 — 펼친 카드에서 재발 신호가 맞는지 확인하세요</span>}
+      </div>
+      <div className="ob-outcome-chart">
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" aria-label={`${o.title} 주별 재발 횟수`} onPointerLeave={() => setHover(null)}>
+          <line x1={0} x2={W} y1={H - 0.5} y2={H - 0.5} className="ob-axis" />
+          {adoptIdx >= 0 && (
+            <>
+              <line x1={adoptIdx * band} x2={adoptIdx * band} y1={top - 4} y2={H} className="ob-adopt-line" />
+              <text x={adoptIdx * band + 3} y={top - 5} className="ob-adopt-label">
+                도입
+              </text>
+            </>
+          )}
+          {o.weeks.map((wk, i) => {
+            const h = wk.hits === 0 ? 0 : Math.max(3, ((H - top) * wk.hits) / max)
+            const x = i * band + (band - bw) / 2
+            const y = H - h
+            const r = Math.min(4, h, bw / 2)
+            return (
+              <g key={wk.week} onPointerEnter={() => setHover(i)} onFocus={() => setHover(i)} tabIndex={0} className={hover === i ? 'on' : ''}>
+                <rect x={i * band} y={0} width={band} height={H} fill="transparent" />
+                {h > 0 && (
+                  <path
+                    className="ob-bar"
+                    d={`M${x},${H} L${x},${y + r} Q${x},${y} ${x + r},${y} L${x + bw - r},${y} Q${x + bw},${y} ${x + bw},${y + r} L${x + bw},${H} Z`}
+                  />
+                )}
+              </g>
+            )
+          })}
+        </svg>
+        <div className="ob-outcome-read subtle">
+          {w ? (
+            <>
+              <b>{w.hits}회</b> · {md(w.from)} 주 · 작업 {fmtShort(w.activeSec)}
+            </>
+          ) : (
+            <>
+              주별 재발 횟수 · {md(o.weeks[0]?.from ?? '')}~ · 막대에 올리면 그 주 숫자
+            </>
+          )}
+        </div>
+      </div>
+      <div className="ob-outcome-nums">
+        <div>
+          <span className="subtle">재발 · 10시간당</span>
+          <b className="num">
+            {rateText(o.beforeRate)} → {early ? '…' : rateText(o.afterRate)}
+          </b>
+          <span className={pct == null ? 'subtle' : pct < 0 ? 'good' : pct > 0 ? 'bad' : 'subtle'}>
+            {early ? `판단 이름(도입 후 작업 ${o.afterHours.toFixed(1)}h)` : pct == null ? '비교 불가' : `${pct > 0 ? '+' : ''}${pct}%`}
+          </span>
+          <span className="subtle ob-outcome-raw">
+            {o.beforeHits}회/{o.beforeHours.toFixed(0)}h → {o.afterHits}회/{o.afterHours.toFixed(0)}h
+          </span>
+        </div>
+        {o.metric && (
+          <div>
+            <span className="subtle">{def?.label ?? o.metric}</span>
+            <b className="num">
+              {fmtMetric(def, o.baseline)} → {fmtMetric(def, o.after)}
+            </b>
+            <span className={`ob-verdict ob-row-verdict ${VERDICT_TONE[o.verdict ?? '측정 중'] ?? 'flat'}`}>{o.verdict ?? '측정 중'}</span>
+          </div>
+        )}
+      </div>
+      <details className="ob-outcome-table">
+        <summary>표로 보기</summary>
+        <table>
+          <thead>
+            <tr>
+              <th>주</th>
+              <th>재발</th>
+              <th>작업 시간</th>
+            </tr>
+          </thead>
+          <tbody>
+            {o.weeks.map((wk) => (
+              <tr key={wk.week} className={wk.week === o.adoptedWeek ? 'adopt' : ''}>
+                <td>
+                  {md(wk.from)} 주{wk.week === o.adoptedWeek && ' (도입)'}
+                </td>
+                <td>{wk.hits}</td>
+                <td>{fmtShort(wk.activeSec)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
+    </div>
+  )
+}
+
+const tok = (n: number) => `${n.toLocaleString('en-US')}토큰`
+const useRuleLoad = () => useQuery({ queryKey: ['rule-load'], queryFn: () => api.ruleLoad(), staleTime: 30_000 })
+
+/** 매 세션 읽히는 양 — md·메모리 색인은 세션을 열 때마다 통째로 읽힌다. 메모리 색인은 줄이기 제안까지 */
+function RuleLoadCard() {
+  const load = useRuleLoad()
+  const [open, setOpen] = useState<string | null>(null)
+  const rows = (load.data ?? []).filter((r) => r.chars > 0)
+  if (rows.length === 0) return null
+  const max = Math.max(...rows.map((r) => r.estTokens))
+  return (
+    <section className="ob-load">
+      <div className="ob-load-head">
+        <b>매 세션 읽히는 양</b>
+        <span className="subtle">
+          아래 파일은 세션을 열 때마다 통째로 읽혀요. 메모리는 색인(MEMORY.md)만 늘 읽히고, 링크된 문서는 관련 있을 때만 열려요. 토큰은 글자로 어림한
+          추정이에요.
+        </span>
+      </div>
+      {rows.map((r) => {
+        const over = r.vitaRules >= r.budget
+        return (
+          <div key={r.target} className="ob-load-item">
+            <div className="ob-load-row">
+              <span className="ob-load-name" title={r.file}>
+                {r.label}
+              </span>
+              <span className="ob-load-bar" title={`Vita 규칙 ${tok(Math.round((r.estTokens * r.vitaChars) / Math.max(1, r.chars)))} 포함`}>
+                <span style={{ width: `${(100 * r.estTokens) / max}%` }}>
+                  <i style={{ width: `${(100 * r.vitaChars) / Math.max(1, r.chars)}%` }} />
+                </span>
+              </span>
+              <span className="ob-load-num">
+                약 {tok(r.estTokens)} <span className="subtle">· {r.lines}줄</span>
+              </span>
+              <span className={`ob-load-vita${over ? ' over' : ''}`} title={over ? '상한 — 새로 넣기 전에 효과 없는 규칙을 빼거나 합치세요' : 'Vita 가 넣은 규칙 / 권장 상한'}>
+                Vita 규칙 {r.vitaRules}/{r.budget}
+              </span>
+              {r.kind === 'memory' && (r.longLines > 0 || r.dietPending > 0) ? (
+                <button className={`btn btn-sm${open === r.target ? ' btn-primary' : ''}`} onClick={() => setOpen(open === r.target ? null : r.target)}>
+                  {r.dietPending > 0 ? `줄이기 제안 ${r.dietPending}줄` : `긴 색인 줄 ${r.longLines}개 줄이기`}
+                </button>
+              ) : (
+                <span />
+              )}
+            </div>
+            {open === r.target && <DietPanel load={r} />}
+          </div>
+        )
+      })}
+    </section>
+  )
+}
+
+/** 메모리 색인 줄이기 — 긴 줄을 짧은 단서로, 빠지는 세부는 링크 문서로 옮긴다. 고른 줄만 적용, 쓰기 전 백업 */
+function DietPanel({ load: r }: { load: RuleLoad }) {
+  const qc = useQueryClient()
+  const items = useQuery({ queryKey: ['diet', r.target], queryFn: () => api.diet(r.target) })
+  const log = useQuery({ queryKey: ['diet-log', r.target], queryFn: () => api.dietLog(r.target) })
+  const jobKey = `observer:diet:${r.target}`
+  const running = useRunningJob(jobKey)
+  const last = useLastJob(jobKey)
+  const start = useStartJob(() => api.dietPropose(r.target))
+  const [off, setOff] = useState<Set<number>>(new Set())
+  const [confirm, setConfirm] = useState(false)
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ['diet', r.target] })
+    qc.invalidateQueries({ queryKey: ['diet-log', r.target] })
+    qc.invalidateQueries({ queryKey: ['rule-load'] })
+  }
+  const apply = useMutation({ mutationFn: (ids: number[]) => api.dietApply(r.target, ids), onSuccess: refresh })
+  const dismiss = useMutation({ mutationFn: (id: number) => api.dietDismiss(id), onSuccess: refresh })
+  const doneId = last?.status === 'DONE' ? last.id : null
+  useEffect(() => {
+    if (doneId) refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doneId])
+  const list = items.data ?? []
+  const chosen = list.filter((d) => !off.has(d.id))
+  const saveTok = chosen.reduce((s, d) => s + d.savedTokens, 0)
+  const after = r.estTokens - saveTok
+  const pct = r.estTokens > 0 ? Math.round((100 * saveTok) / r.estTokens) : 0
+  return (
+    <div className="ob-diet">
+      {(log.data ?? []).length > 0 && (
+        <div className="ob-diet-log">
+          {(log.data ?? []).map((l) => (
+            <span key={l.appliedAt}>
+              {fmtDateTime(l.appliedAt)} 정리 {l.lines}줄 · 색인 {tok(l.beforeTokens)} → {tok(l.afterTokens)}{' '}
+              <b className="good">-{Math.round((100 * (l.beforeTokens - l.afterTokens)) / Math.max(1, l.beforeTokens))}%</b>
+            </span>
+          ))}
+        </div>
+      )}
+      {list.length === 0 ? (
+        <div className="ob-diet-empty">
+          <span className="subtle">
+            150자 넘는 색인 줄 {r.longLines}개를 짧은 단서로 줄이는 정리안을 만들어요. 줄에서 빠지는 세부 중 링크 문서에 없는 건 그 문서 끝으로 옮겨요.
+          </span>
+          <button className="btn btn-primary btn-sm" onClick={() => start.mutate(undefined)} disabled={!!running || start.isPending}>
+            <Icon name="sparkle" size={13} />
+            {running ? (running.message ?? '만드는 중') : '줄이기 제안 만들기'}
+          </button>
+          {!running && last?.status === 'FAILED' && <span className="bad">{last.message}</span>}
+          {!running && last?.status === 'DONE' && <span className="subtle">{last.message}</span>}
+        </div>
+      ) : (
+        <>
+          <div className="ob-diet-sum">
+            <span>
+              고른 {chosen.length}줄 적용하면 색인 <b>{tok(r.estTokens)}</b> → <b>{tok(after)}</b> <b className="good">-{pct}%</b>
+              <span className="subtle"> · 매 세션 약 {tok(saveTok)} 덜 읽음</span>
+            </span>
+            {confirm ? (
+              <span className="ob-confirm">
+                <span className="subtle">{r.file} 을 백업한 뒤 고쳐요</span>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => {
+                    apply.mutate(chosen.map((d) => d.id))
+                    setConfirm(false)
+                  }}
+                >
+                  적용
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setConfirm(false)}>
+                  취소
+                </button>
+              </span>
+            ) : (
+              <span className="ob-confirm">
+                <button className="btn btn-primary btn-sm" disabled={chosen.length === 0 || apply.isPending} onClick={() => setConfirm(true)}>
+                  고른 {chosen.length}줄 적용
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => start.mutate(undefined)} disabled={!!running}>
+                  {running ? (running.message ?? '만드는 중') : '다시 만들기'}
+                </button>
+              </span>
+            )}
+          </div>
+          {apply.data && <div className="subtle ob-diet-msg">{apply.data.message}</div>}
+          {apply.isError && <div className="bad ob-diet-msg">{(apply.error as Error).message}</div>}
+          <ul className="ob-diet-list">
+            {list.map((d) => (
+              <DietRow
+                key={d.id}
+                item={d}
+                on={!off.has(d.id)}
+                toggle={() =>
+                  setOff((cur) => {
+                    const n = new Set(cur)
+                    if (n.has(d.id)) n.delete(d.id)
+                    else n.add(d.id)
+                    return n
+                  })
+                }
+                dismiss={() => dismiss.mutate(d.id)}
+              />
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  )
+}
+
+function DietRow({ item: d, on, toggle, dismiss }: { item: DietItem; on: boolean; toggle: () => void; dismiss: () => void }) {
+  return (
+    <li className={on ? '' : 'off'}>
+      <input type="checkbox" checked={on} onChange={toggle} aria-label="이 줄 적용" />
+      <div className="ob-diet-body">
+        <div className="ob-diet-old">{d.oldLine}</div>
+        <div className="ob-diet-new">{d.newLine}</div>
+        {d.moved && <div className="ob-diet-moved">→ {d.file} 끝으로 옮김: {d.moved}</div>}
+        {d.reason && <div className="subtle ob-diet-reason">{d.reason}</div>}
+      </div>
+      <span className="ob-diet-save good">-{tok(d.savedTokens)}</span>
+      <button className="btn btn-ghost btn-sm" onClick={dismiss} title="이 줄은 그대로 둬요">
+        빼기
+      </button>
+    </li>
+  )
+}
+
+/** 이 규칙이 늘리는 읽기 양 — 제안이면 «넣으면 +N», 도입했으면 «매 세션 N» */
+function LoadChip({ insight: i, over }: { insight: Insight; over: boolean }) {
+  const l = i.load
+  const proposed = i.status === 'proposed' || i.status === 'rejected'
+  const pct = l.targetTokens > 0 ? (100 * l.always) / l.targetTokens : null
+  const tip = proposed
+    ? `넣으면 ${i.targetLabel ?? '넣을 곳'} 이 매 세션 약 ${tok(l.targetTokens)} → ${tok(l.targetTokens + l.always)}` +
+      (pct != null ? ` (+${pct.toFixed(1)}%)` : '') +
+      (l.onDemand > 0 ? `\n메모리 본문 약 ${tok(l.onDemand)}은 관련 있을 때만 읽혀요` : '') +
+      (over ? '\n이 곳은 Vita 규칙 상한이에요 — 효과 없는 규칙부터 빼는 걸 권해요' : '')
+    : `이 규칙이 매 세션 약 ${tok(l.always)} 읽혀요` + (l.onDemand > 0 ? ` + 관련 있을 때 본문 ${tok(l.onDemand)}` : '')
+  return (
+    <span className={`ob-load-chip${over && proposed ? ' over' : ''}`} title={tip}>
+      {proposed ? `+${tok(l.always)}/세션` : `${tok(l.always)}/세션`}
+      {over && proposed && ' · 상한'}
+    </span>
+  )
+}
+
+/** 넣을 곳별 상한 여부 */
+function useOverBudget(): (target: string | null) => boolean {
+  const load = useRuleLoad()
+  return (t) => !!t && (load.data ?? []).some((r) => r.target === t && r.vitaRules >= r.budget)
 }
 
 /** 아직 안 본 세션 — 새 세션과, 봤던 뒤로 내용이 이어진 세션(이어진 부분만 본다) */
@@ -758,7 +1178,9 @@ function ProposedByTier({ items, defs, targets }: { items: Insight[]; defs: Metr
       <div className="ob-tier-bar">
         {confirmMust ? (
           <>
-            <span>필수 {must.length}개를 각 md 에 넣고 측정을 시작할까요?</span>
+            <span>
+              필수 {must.length}개를 각 md 에 넣고 측정을 시작할까요? 매 세션 합계 약 {tok(must.reduce((s, i) => s + i.load.always, 0))} 더 읽혀요.
+            </span>
             <button
               className="btn btn-primary btn-sm"
               onClick={() => {
@@ -815,6 +1237,7 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
   const def = defs.find((d) => d.key === i.metric)
   const editable = i.status === 'proposed' || i.status === 'rejected'
   const [confirm, setConfirm] = useState<null | 'write' | 'revert' | 'delete'>(null)
+  const qc = useQueryClient()
   const patch = useInsightMutation((p: InsightPatch) => api.updateInsight(i.id, p))
   const adopt = useInsightMutation((write: boolean) => api.adoptInsight(i.id, write))
   const revert = useInsightMutation(() => api.revertInsight(i.id))
@@ -830,6 +1253,11 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
   // 선택 규칙이 측정해 보니 효과가 없으면 빼기를 권한다
   const dropHint = tierOf(i) === 'optional' && (i.status === 'adopted' || i.status === 'done') && (i.verdict === '변화 없음' || i.verdict === '악화')
 
+  const overBudget = useOverBudget()
+  const loadNote =
+    `매 세션 약 ${tok(i.load.targetTokens)} → ${tok(i.load.targetTokens + i.load.always)}` +
+    (i.load.targetTokens > 0 ? `(+${((100 * i.load.always) / i.load.targetTokens).toFixed(1)}%)` : '') +
+    (overBudget(i.target) ? ' · 이 곳은 Vita 규칙 상한이에요' : '')
   // 접힌 줄 — 단계·제목·(결과)·넣을 곳·바로 할 일, 규칙 한 줄. 제목을 누르면 펼친다
   if (!open) {
     const v = i.verdict ?? '측정 중'
@@ -851,6 +1279,7 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
             </span>
           )}
           {i.status === 'adopted' && <span className="ob-row-meta subtle">일한 날 {i.afterDays}일</span>}
+          {i.target && <LoadChip insight={i} over={overBudget(i.target)} />}
           {target && (
             <span className="ob-row-meta ob-row-target subtle" title={target.path}>
               {target.label}
@@ -900,8 +1329,8 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
         {confirm && (
           <div className="ob-confirm">
             <span>
-              {confirm === 'write' && `${target?.path ?? i.target} 에 문안을 넣고 측정을 시작할까요?`}
-              {confirm === 'revert' && '파일에서 문안을 빼고 제안 상태로 되돌릴까요? 기준값·측정은 지워져요.'}
+              {confirm === 'write' && `${target?.path ?? i.target} 에 넣고 측정을 시작할까요? ${loadNote}`}
+              {confirm === 'revert' && `파일에서 문안을 빼고 제안 상태로 되돌릴까요? 매 세션 약 ${tok(i.load.always)} 줄어요. 기준값·측정은 지워져요.`}
             </span>
             <button
               className={`btn btn-sm${confirm === 'write' ? ' btn-primary' : ''}`}
@@ -991,6 +1420,21 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
         </label>
       </div>
 
+      <div className="ob-signals">
+        <span className="subtle" title="같은 실수가 다시 나면 도구 명령·오류 문구·정정 요청에 글자 그대로 나올 문자열 — 도입 효과에서 재발 횟수를 셀 때 써요. 쉼표로 나눠요">
+          재발 신호
+        </span>
+        <InlineText
+          className="ob-signals-input"
+          value={i.signals.join(', ')}
+          placeholder="예: sleep 600, push origin HEAD:main"
+          onSave={(v) => {
+            patch.mutate({ signals: v.split(',').map((x) => x.trim()).filter(Boolean) })
+            qc.invalidateQueries({ queryKey: ['outcomes'] })
+          }}
+        />
+      </div>
+
       <div className="ob-snippet">
         <div className="ob-snippet-head">
           <span>md 에 넣을 문안</span>
@@ -1018,6 +1462,10 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
         {target && (
           <div className="ob-snippet-path subtle">
             {target.kind === 'memory' ? `${target.path}/ 에 feedback 파일 + MEMORY.md 한 줄` : `${target.path}${target.exists ? '' : ' (새 파일)'} 끝에 덧붙임`}
+            {' · '}
+            {target.kind === 'memory'
+              ? `색인 한 줄 약 ${tok(i.load.always)}은 매 세션, 본문 약 ${tok(i.load.onDemand)}은 관련 있을 때만 읽혀요`
+              : `매 세션 약 ${tok(i.load.always)} 더 읽혀요`}
           </div>
         )}
       </div>
@@ -1029,8 +1477,8 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
       {confirm ? (
         <div className="ob-confirm">
           <span>
-            {confirm === 'write' && `${target?.path ?? i.target} 에 문안을 넣고 측정을 시작할까요?`}
-            {confirm === 'revert' && '파일에서 문안을 빼고 제안 상태로 되돌릴까요? 기준값·측정은 지워져요.'}
+            {confirm === 'write' && `${target?.path ?? i.target} 에 넣고 측정을 시작할까요? ${loadNote}`}
+            {confirm === 'revert' && `파일에서 문안을 빼고 제안 상태로 되돌릴까요? 매 세션 약 ${tok(i.load.always)} 줄어요. 기준값·측정은 지워져요.`}
             {confirm === 'delete' && '이 제안을 지울까요?'}
           </span>
           <button

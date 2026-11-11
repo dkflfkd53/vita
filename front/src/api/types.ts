@@ -573,6 +573,95 @@ export interface Insight {
   effect: string | null
   /** 이 제안의 근거가 된 세션(누르면 세션 상세) */
   sessions: { title: string; taskKey: string; repo: string | null }[]
+  /** 넣으면 늘어나는 읽기 양(추정 토큰) */
+  load: AddedLoad
+  /** 같은 실수가 다시 나면 명령·오류·정정 요청에 나올 문자열(재발을 셀 때) */
+  signals: string[]
+}
+
+export interface OutcomeWeek {
+  week: string
+  from: string
+  hits: number
+  activeSec: number
+}
+
+/** 도입한 규칙의 효과 — 재발(10시간당) 도입 전 28일 vs 도입 후, 지표 전후 */
+export interface Outcome {
+  id: number
+  title: string
+  status: string
+  adoptedAt: string
+  signals: string[]
+  repo: string | null
+  weeks: OutcomeWeek[]
+  adoptedWeek: string
+  beforeHits: number
+  beforeHours: number
+  afterHits: number
+  afterHours: number
+  beforeRate: number | null
+  afterRate: number | null
+  metric: string | null
+  baseline: number | null
+  after: number | null
+  deltaPct: number | null
+  verdict: string | null
+  /** 발생 세션들의 저장소 — 넣은 곳(repo)과 다르면 규칙이 그 세션엔 안 읽힌다 */
+  sourceRepos: string[]
+}
+
+export interface Outcomes {
+  rules: Outcome[]
+  missingSignals: number
+}
+
+/** always = 매 세션 통째로 읽힘, onDemand = 관련 있을 때만(메모리 본문), targetTokens = 넣을 곳 지금 크기 */
+export interface AddedLoad {
+  always: number
+  alwaysChars: number
+  onDemand: number
+  targetTokens: number
+}
+
+/** 넣을 곳마다 매 세션 읽히는 양 */
+export interface RuleLoad {
+  target: string
+  label: string
+  kind: string
+  file: string
+  chars: number
+  lines: number
+  estTokens: number
+  vitaRules: number
+  vitaChars: number
+  longLines: number
+  budget: number
+  dietPending: number
+}
+
+export interface DietItem {
+  id: number
+  target: string
+  file: string
+  oldLine: string
+  newLine: string
+  moved: string | null
+  reason: string | null
+  status: string
+  saved: number
+  savedTokens: number
+}
+
+export interface DietLog {
+  target: string
+  appliedAt: string
+  lines: number
+  beforeChars: number
+  afterChars: number
+  beforeTokens: number
+  afterTokens: number
+  backup: string | null
 }
 
 /** 아직 개선점을 안 본 세션 — rescan = 예전에 봤는데 내용이 이어진 세션(이어진 부분만 본다) */
@@ -604,6 +693,7 @@ export interface InsightPatch {
   note?: string
   status?: 'proposed' | 'rejected'
   tier?: InsightTier
+  signals?: string[]
 }
 
 // ───────── 설정 ─────────

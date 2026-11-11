@@ -237,6 +237,32 @@ CREATE TABLE IF NOT EXISTS insight_scan (
     scanned_at    TEXT NOT NULL
 );
 
+-- 메모리 색인(MEMORY.md) 줄이기 제안. 긴 색인 줄 → 짧은 줄 + 빠진 세부는 링크된 문서로 옮김(moved)
+CREATE TABLE IF NOT EXISTS memory_diet (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    target     TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    file       TEXT NOT NULL,
+    old_line   TEXT NOT NULL,
+    new_line   TEXT NOT NULL,
+    moved      TEXT,
+    reason     TEXT,
+    status     TEXT NOT NULL
+);
+
+-- 색인 줄이기 적용 기록 — 적용 전후 크기(효과 표시용)
+CREATE TABLE IF NOT EXISTS memory_diet_log (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    target        TEXT NOT NULL,
+    applied_at    TEXT NOT NULL,
+    lines         INTEGER NOT NULL,
+    before_chars  INTEGER NOT NULL,
+    after_chars   INTEGER NOT NULL,
+    before_tokens INTEGER NOT NULL,
+    after_tokens  INTEGER NOT NULL,
+    backup        TEXT
+);
+
 -- ───────── 사용자 설정 ─────────
 -- 화면의 설정에서 바꾸는 값(JSON). key = projects | routines | work-text
 CREATE TABLE IF NOT EXISTS setting (

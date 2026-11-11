@@ -34,6 +34,10 @@ import type {
   WorkTextPartKey,
   MetricDef,
   InsightPending,
+  RuleLoad,
+  DietItem,
+  DietLog,
+  Outcomes,
 } from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -120,6 +124,15 @@ export const api = {
     request<Observer>(`/observer/${kind}/${key}${scope ? `?scope=${encodeURIComponent(scope)}` : ''}`),
   metricDefs: () => request<MetricDef[]>('/observer/metric-defs'),
   insightPending: () => request<InsightPending>('/observer/insights/pending'),
+  outcomes: () => request<Outcomes>('/observer/outcomes'),
+  insightSignals: () => request<JobView>('/observer/insights/signals', { method: 'POST' }),
+  ruleLoad: () => request<RuleLoad[]>('/observer/rule-load'),
+  diet: (target: string) => request<DietItem[]>(`/observer/diet?target=${encodeURIComponent(target)}`),
+  dietLog: (target: string) => request<DietLog[]>(`/observer/diet/log?target=${encodeURIComponent(target)}`),
+  dietPropose: (target: string) => request<JobView>(`/observer/diet?target=${encodeURIComponent(target)}`, { method: 'POST' }),
+  dietApply: (target: string, ids: number[]) =>
+    request<{ message: string }>(`/observer/diet/apply?target=${encodeURIComponent(target)}`, { method: 'POST', body: JSON.stringify(ids) }),
+  dietDismiss: (id: number) => request<void>(`/observer/diet/${id}/dismiss`, { method: 'POST' }),
   scanInsights: () => request<JobView>('/observer/insights/scan', { method: 'POST' }),
   scanTaskInsights: (taskKey: string) => request<JobView>(`/observer/insights/scan/${encodeURIComponent(taskKey)}`, { method: 'POST' }),
   insightTargets: () => request<InsightTarget[]>('/observer/targets'),

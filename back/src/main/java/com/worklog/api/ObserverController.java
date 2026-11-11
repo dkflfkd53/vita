@@ -16,10 +16,15 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.worklog.agent.ObserverService;
+import com.worklog.agent.RuleLoadService;
+import com.worklog.agent.ObserverViews.DietItem;
+import com.worklog.agent.ObserverViews.DietLog;
+import com.worklog.agent.ObserverViews.RuleLoad;
 import com.worklog.agent.ObserverViews.Insight;
 import com.worklog.agent.ObserverViews.InsightRequest;
 import com.worklog.agent.ObserverViews.MetricDef;
 import com.worklog.agent.ObserverViews.Observer;
+import com.worklog.agent.ObserverViews.Outcomes;
 import com.worklog.agent.ObserverViews.Pending;
 import com.worklog.agent.ObserverViews.Target;
 import com.worklog.summary.JobService.JobView;
@@ -33,6 +38,7 @@ import lombok.RequiredArgsConstructor;
 public class ObserverController {
 
     private final ObserverService service;
+    private final RuleLoadService ruleLoad;
 
     /** kind = week | month | year */
     @GetMapping("/{kind:week|month|year}/{key}")
@@ -66,6 +72,52 @@ public class ObserverController {
     @GetMapping("/metric-defs")
     public List<MetricDef> metricDefs() {
         return ObserverService.metricDefs();
+    }
+
+    /** 넣을 곳마다 매 세션 읽히는 양·Vita 규칙 수(예산) */
+    @GetMapping("/rule-load")
+    public List<RuleLoad> ruleLoad() {
+        return ruleLoad.load();
+    }
+
+    /** 메모리 색인 줄이기 — 지금 남은 제안 */
+    @GetMapping("/diet")
+    public List<DietItem> diet(@RequestParam String target) {
+        return ruleLoad.diet(target);
+    }
+
+    @GetMapping("/diet/log")
+    public List<DietLog> dietLog(@RequestParam String target) {
+        return ruleLoad.dietLog(target);
+    }
+
+    @PostMapping("/diet")
+    public JobView dietPropose(@RequestParam String target) {
+        return ruleLoad.submitDiet(target).view();
+    }
+
+    /** 고른 줄만 적용(쓰기 전 백업) */
+    @PostMapping("/diet/apply")
+    public Map<String, String> dietApply(@RequestParam String target, @RequestBody List<Long> ids) throws IOException {
+        return Map.of("message", ruleLoad.applyDiet(target, ids));
+    }
+
+    @PostMapping("/diet/{id}/dismiss")
+    public ResponseEntity<Void> dietDismiss(@PathVariable long id) {
+        ruleLoad.dismissDiet(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** 도입한 규칙의 효과 — 같은 실수 재발(주별·도입 전후)과 지표 전후 */
+    @GetMapping("/outcomes")
+    public Outcomes outcomes() {
+        return service.outcomes();
+    }
+
+    /** 재발 신호가 빠진 제안에 AI 로 신호 붙이기 */
+    @PostMapping("/insights/signals")
+    public JobView signals() {
+        return service.submitSignals().view();
     }
 
     @GetMapping("/targets")

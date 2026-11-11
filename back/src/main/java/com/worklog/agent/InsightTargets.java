@@ -89,7 +89,45 @@ public class InsightTargets {
             throw new IllegalArgumentException("넣을 문안이 비어 있습니다");
         }
         if (targetKey.startsWith("memory:")) {
-            String md = """
+            String md = memoryBody(id, title, problem, body);
+            Files.writeString(file, md, StandardCharsets.UTF_8);
+            Path index = file.getParent().resolve("MEMORY.md");
+            String line = indexLine(id, title, file.getFileName().toString());
+            String cur = Files.exists(index) ? read(index) : "";
+            if (!cur.contains(file.getFileName().toString())) {
+                Files.writeString(index, (cur.isEmpty() || cur.endsWith("\n") ? cur : cur + "\n") + line, StandardCharsets.UTF_8);
+            }
+        } else {
+            String cur = Files.exists(file) ? read(file) : "";
+            if (!cur.contains(marker(id))) {
+                String sep = cur.isEmpty() ? "" : cur.endsWith("\n\n") ? "" : cur.endsWith("\n") ? "\n" : "\n\n";
+                Files.createDirectories(file.getParent());
+                Files.writeString(file, cur + sep + block(id, body), StandardCharsets.UTF_8);
+            }
+        }
+        log.info("개선 제안 #{} 적용: {}", id, file);
+        return file;
+    }
+
+    /** 넣으면 붙는 글 — [매 세션 읽히는 것, 관련 있을 때만 읽히는 것] (apply 와 같은 모양) */
+    public static String[] addedText(long id, String targetKey, String title, String problem, String snippet) {
+        String body = snippet == null ? "" : snippet.strip();
+        if (targetKey != null && targetKey.startsWith("memory:")) {
+            return new String[] {indexLine(id, title, "feedback_vita_insight_%d.md".formatted(id)), memoryBody(id, title, problem, body)};
+        }
+        return new String[] {block(id, body), ""};
+    }
+
+    private static String indexLine(long id, String title, String fileName) {
+        return "- [%s](%s) — Vita 제안 #%d%n".formatted(oneLine(title), fileName, id);
+    }
+
+    private static String block(long id, String body) {
+        return marker(id) + "\n" + body + "\n" + endMarker(id) + "\n";
+    }
+
+    private static String memoryBody(long id, String title, String problem, String body) {
+        return """
                     ---
                     name: vita-insight-%d
                     description: %s
@@ -102,23 +140,6 @@ public class InsightTargets {
                     **Why:** %s
                     **How to apply:** 위 규칙을 그대로 따른다. (Vita 에이전트 옵저버 제안 #%d, %s 도입)
                     """.formatted(id, oneLine(title), body, oneLine(problem == null ? title : problem), id, LocalDate.now());
-            Files.writeString(file, md, StandardCharsets.UTF_8);
-            Path index = file.getParent().resolve("MEMORY.md");
-            String line = "- [%s](%s) — Vita 제안 #%d%n".formatted(oneLine(title), file.getFileName(), id);
-            String cur = Files.exists(index) ? read(index) : "";
-            if (!cur.contains(file.getFileName().toString())) {
-                Files.writeString(index, (cur.isEmpty() || cur.endsWith("\n") ? cur : cur + "\n") + line, StandardCharsets.UTF_8);
-            }
-        } else {
-            String cur = Files.exists(file) ? read(file) : "";
-            if (!cur.contains(marker(id))) {
-                String sep = cur.isEmpty() ? "" : cur.endsWith("\n\n") ? "" : cur.endsWith("\n") ? "\n" : "\n\n";
-                Files.createDirectories(file.getParent());
-                Files.writeString(file, cur + sep + marker(id) + "\n" + body + "\n" + endMarker(id) + "\n", StandardCharsets.UTF_8);
-            }
-        }
-        log.info("개선 제안 #{} 적용: {}", id, file);
-        return file;
     }
 
     /** 넣었던 문안을 뺀다(표식 사이 / 메모리 파일과 색인 줄) */
