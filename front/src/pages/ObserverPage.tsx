@@ -693,7 +693,7 @@ function ImproveTiles({ view, onPick, insights }: { view: ImproveView; onPick: (
         rules.length === 0 && missing === 0
           ? '—'
           : o.ready.length === 0
-            ? '판단 이름'
+            ? '측정 중'
             : o.pct == null
               ? '비교 불가'
               : `${o.pct > 0 ? '+' : ''}${o.pct}%`,
@@ -701,11 +701,11 @@ function ImproveTiles({ view, onPick, insights }: { view: ImproveView; onPick: (
         rules.length === 0 && missing === 0
           ? '도입한 규칙이 없어요'
           : [
-              `지표 개선 ${o.better}/${o.judged.length}`,
-              o.worse > 0 ? `악화 ${o.worse}` : '',
+              o.ready.length === 0 && rules.length > 0 ? `도입 후 작업 ${o.minAfter.toFixed(1)}/${MIN_AFTER_HOURS}시간` : '',
+              o.judged.length > 0 ? `지표 좋아짐 ${o.better}/${o.judged.length}` : '',
+              o.worse > 0 ? `나빠짐 ${o.worse}` : '',
               o.misplaced > 0 ? `넣은 곳 확인 ${o.misplaced}` : '',
               missing > 0 ? `신호 없음 ${missing}` : '',
-              o.ready.length === 0 && rules.length > 0 ? `도입 후 ${o.minAfter.toFixed(1)}h` : '',
             ]
               .filter(Boolean)
               .join(' · '),
@@ -796,7 +796,7 @@ function OutcomeCard({ defs }: { defs: MetricDef[] }) {
             </>
           ) : (
             <span className="subtle">
-              같은 실수 비교는 도입 후 작업이 {MIN_AFTER_HOURS}시간 넘으면 — 지금 {minAfter.toFixed(1)}시간
+              측정 중 — 도입 후 작업이 {MIN_AFTER_HOURS}시간 쌓이면 같은 실수 전후를 비교해요(지금 {minAfter.toFixed(1)}시간)
             </span>
           )}
         </span>
@@ -893,7 +893,7 @@ function OutcomeRow({ o, def }: { o: Outcome; def: MetricDef | undefined }) {
             {rateText(o.beforeRate)} → {early ? '…' : rateText(o.afterRate)}
           </b>
           <span className={pct == null ? 'subtle' : pct < 0 ? 'good' : pct > 0 ? 'bad' : 'subtle'}>
-            {early ? `판단 이름(도입 후 작업 ${o.afterHours.toFixed(1)}h)` : pct == null ? '비교 불가' : `${pct > 0 ? '+' : ''}${pct}%`}
+            {early ? `측정 중 · 도입 후 작업 ${o.afterHours.toFixed(1)}/${MIN_AFTER_HOURS}시간` : pct == null ? '비교 불가' : `${pct > 0 ? '+' : ''}${pct}%`}
           </span>
           <span className="subtle ob-outcome-raw">
             {o.beforeHits}회/{o.beforeHours.toFixed(0)}h → {o.afterHits}회/{o.afterHours.toFixed(0)}h
