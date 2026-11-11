@@ -299,7 +299,7 @@ public class RuleLoadService {
     }
 
     private static Path loadedFile(Target t) {
-        Path p = InsightTargets.untilde(t.path());
+        Path p = PathText.untilde(t.path());
         return "memory".equals(t.kind()) ? p.resolve("MEMORY.md") : p;
     }
 
@@ -309,7 +309,7 @@ public class RuleLoadService {
             return null;
         }
         String f = m.group(1);
-        return f.contains("/") || f.startsWith("http") ? null : f;
+        return f.contains("/") || f.contains("\\") || f.startsWith("http") ? null : f;
     }
 
     private static String read(Path p) {
@@ -321,8 +321,6 @@ public class RuleLoadService {
     }
 
     private static String tilde(Path p) {
-        String home = System.getProperty("user.home");
-        String s = p.toString();
-        return s.startsWith(home) ? "~" + s.substring(home.length()) : s;
+        return PathText.tilde(p.toString());
     }
 }

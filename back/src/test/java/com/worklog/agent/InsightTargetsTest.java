@@ -120,24 +120,13 @@ class InsightTargetsTest {
         assertThat(memories).hasSize(1);
         String key = memories.getFirst().key();
         assertThat(key).startsWith("memory:").endsWith("work");
+        assertThat(t.memoryKeyFor(work.toString())).isEqualTo(key);
+        assertThat(t.memoryKeyFor(home.resolve("elsewhere").toString())).isNull();
 
         Path file = t.apply(9, key, "빌드는 한 번에", "근거", "- 빌드 확인은 한 번만");
         assertThat(file.getParent()).isEqualTo(mem);
         assertThat(Files.readString(mem.resolve("MEMORY.md"))).contains("feedback_vita_insight_9.md");
         t.revert(9, key);
         assertThat(file).doesNotExist();
-    }
-
-    @Test
-    void untildeKeepsWindowsHomeBackslashes() {
-        String old = System.getProperty("user.home");
-        System.setProperty("user.home", "C:\\Users\\marin");
-        try {
-            assertThat(InsightTargets.untilde("~\\.claude\\CLAUDE.md").toString().replace('/', '\\'))
-                    .isEqualTo("C:\\Users\\marin\\.claude\\CLAUDE.md");
-            assertThat(InsightTargets.untilde("D:\\work\\CLAUDE.md").toString().replace('/', '\\')).isEqualTo("D:\\work\\CLAUDE.md");
-        } finally {
-            System.setProperty("user.home", old);
-        }
     }
 }

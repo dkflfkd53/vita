@@ -8,10 +8,10 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
@@ -36,6 +36,8 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 @RequiredArgsConstructor
 public class InsightTargets {
+
+    private static final int LONG_NAME = 200;
 
     private final WorklogProperties props;
     private final JdbcClient jdbc;
@@ -75,11 +77,11 @@ public class InsightTargets {
      */
     private void addFolderMemories(List<Target> out) {
         Set<String> seen = new HashSet<>();
-        out.stream().filter(t -> "memory".equals(t.kind())).forEach(t -> seen.add(t.path().toLowerCase(Locale.ROOT)));
+        out.stream().filter(t -> "memory".equals(t.kind())).forEach(t -> seen.add(PathText.key(t.path())));
         for (String cwd : jdbc.sql("SELECT DISTINCT cwd FROM session WHERE cwd IS NOT NULL ORDER BY cwd").query(String.class).list()) {
             Path dir = Path.of(cwd);
             Path mem = memoryDir(dir);
-            if (!Files.isRegularFile(mem.resolve("MEMORY.md")) || !seen.add(tilde(mem).toLowerCase(Locale.ROOT))) {
+            if (!Files.isRegularFile(mem.resolve("MEMORY.md")) || !seen.add(PathText.key(tilde(mem)))) {
                 continue;
             }
             String name = dir.getFileName() == null ? cwd : dir.getFileName().toString();
@@ -145,7 +147,8 @@ public class InsightTargets {
     }
 
     private static String indexLine(long id, String title, String fileName) {
-        return "- [%s](%s) — Vita 제안 #%d%n".formatted(oneLine(title), fileName, id);
+        // %n 은 Windows 에서 \r\n — 다른 줄과 섞이지 않게 늘 \n
+        return "- [%s](%s) — Vita 제안 #%d\n".formatted(oneLine(title), fileName, id);
     }
 
     private static String block(long id, String body) {
@@ -197,7 +200,7 @@ public class InsightTargets {
     public String currentRules(int maxPerFile) {
         StringBuilder sb = new StringBuilder();
         for (Target t : list()) {
-            Path p = untilde(t.path());
+            Path p = PathText.untilde(t.path());
             Path f = "memory".equals(t.kind()) ? p.resolve("MEMORY.md") : p;
             if (!Files.exists(f)) {
                 continue;
@@ -228,7 +231,7 @@ public class InsightTargets {
         String kind = targetKey.substring(0, colon);
         String repo = targetKey.substring(colon + 1);
         if ("memory".equals(kind) && isFolder(repo)) {
-            return find(targetKey).map(t -> untilde(t.path()).resolve("feedback_vita_insight_%d.md".formatted(id)));
+            return find(targetKey).map(t -> PathText.untilde(t.path()).resolve("feedback_vita_insight_%d.md".formatted(id)));
         }
         if (!scope.repos().contains(repo)) {
             return Optional.empty();
@@ -250,9 +253,32 @@ public class InsightTargets {
                 .optional().map(Path::of);
     }
 
-    /** Claude Code 의 프로젝트 폴더 이름 규칙: 경로의 영숫자 아닌 글자를 '-' 로 */
+    /** 이 작업 폴더에서 연 세션이 쓰는 메모리의 넣을 곳 키(저장소 메모리 또는 작업 폴더 메모리). 넣을 곳이 아니면 null */
+    public String memoryKeyFor(String cwd) {
+        if (cwd == null) {
+            return null;
+        }
+        String mem = PathText.key(tilde(memoryDir(Path.of(cwd))));
+        return list().stream().filter(t -> "memory".equals(t.kind()) && PathText.key(t.path()).equals(mem))
+                .map(Target::key).findFirst().orElse(null);
+    }
+
+    /**
+     * Claude Code 의 프로젝트 폴더 이름 규칙: 경로의 영숫자 아닌 글자를 '-' 로. 200자를 넘으면 앞 200자 뒤에 해시를 붙이므로
+     * 그때는 앞 200자로 시작하는 폴더를 찾는다
+     */
     private Path memoryDir(Path repoRoot) {
-        return props.projectsDir().resolve(repoRoot.toString().replaceAll("[^A-Za-z0-9]", "-")).resolve("memory");
+        String name = repoRoot.toString().replaceAll("[^A-Za-z0-9]", "-");
+        Path dir = props.projectsDir().resolve(name);
+        if (name.length() > LONG_NAME && !Files.isDirectory(dir)) {
+            String prefix = name.substring(0, LONG_NAME) + "-";
+            try (Stream<Path> s = Files.list(props.projectsDir())) {
+                dir = s.filter(d -> d.getFileName().toString().startsWith(prefix)).findFirst().orElse(dir);
+            } catch (IOException e) {
+                // projects 폴더가 없으면 계산한 이름 그대로
+            }
+        }
+        return dir.resolve("memory");
     }
 
     static String marker(long id) {
@@ -276,14 +302,7 @@ public class InsightTargets {
     }
 
     private static String tilde(Path p) {
-        String home = System.getProperty("user.home");
-        String s = p.toString();
-        return s.startsWith(home) ? "~" + s.substring(home.length()) : s;
-    }
-
-    /** tilde 의 반대. replaceFirst 는 치환 글의 \ 를 이스케이프로 먹어 Windows 홈(C:\Users\…)이 깨지므로 문자열로 잇는다 */
-    static Path untilde(String s) {
-        return Path.of(s.startsWith("~") ? System.getProperty("user.home") + s.substring(1) : s);
+        return PathText.tilde(p.toString());
     }
 
     /** memory:… 뒤가 저장소 이름이 아니라 작업 폴더 경로인가 */

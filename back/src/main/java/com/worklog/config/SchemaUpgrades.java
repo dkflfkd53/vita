@@ -1,5 +1,7 @@
 package com.worklog.config;
 
+import java.time.Instant;
+
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
@@ -41,6 +43,21 @@ public class SchemaUpgrades {
         // 고정 연결은 건 날부터만 적용(과거 작업 소급 방지). 컬럼 생기기 전 고정은 모두 2026-10-26 에 만든 것
         if (addColumn("session_pin", "pinned_from", "TEXT")) {
             jdbc.sql("UPDATE session_pin SET pinned_from = '2026-10-26' WHERE pinned_from IS NULL").update();
+        }
+        // Windows 의 PowerShell 도구 호출은 명령(target)을 비워 모았다 — 남아 있는 세션 원본을 한 번 처음부터 다시 읽어 채운다
+        once("upgrade.powershell-target", () -> jdbc.sql("""
+                UPDATE ingest_agent_file SET read_offset = 0 WHERE EXISTS (SELECT 1 FROM agent_tool_call c
+                WHERE c.tool = 'PowerShell' AND c.target IS NULL AND ingest_agent_file.path LIKE '%' || c.session_id || '%')
+                """).update());
+    }
+
+    /** 한 번만 돌 정리 — setting 표에 이름을 남겨 다음 시작부터 건너뛴다 */
+    private void once(String key, Runnable task) {
+        Integer done = jdbc.sql("SELECT COUNT(*) FROM setting WHERE key = ?").param(key).query(Integer.class).single();
+        if (done == 0) {
+            task.run();
+            jdbc.sql("INSERT INTO setting (key, value, updated_at) VALUES (?, 'done', ?)").params(key, Instant.now().toString()).update();
+            log.info("한 번 정리: {}", key);
         }
     }
 
