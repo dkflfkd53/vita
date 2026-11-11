@@ -1509,13 +1509,11 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
             <div className="ob-detail-rule">{i.snippet}</div>
           )}
           <div className="ob-detail-k">왜</div>
-          <Clamp>
-            {editable ? (
-              <InlineText multiline className="ob-detail-why" value={i.problem ?? ''} placeholder="근거 — 어떤 숫자를 보고 이렇게 바꾸나" onSave={(t) => patch.mutate({ problem: t })} />
-            ) : (
-              <p className="ob-detail-why">{i.problem}</p>
-            )}
-          </Clamp>
+          {editable ? (
+            <InlineText multiline className="ob-detail-why" value={i.problem ?? ''} placeholder="근거 — 어떤 숫자를 보고 이렇게 바꾸나" onSave={(t) => patch.mutate({ problem: t })} />
+          ) : (
+            <p className="ob-detail-why">{i.problem}</p>
+          )}
         </div>
         <dl className="ob-detail-side">
           <dt>넣을 곳</dt>
@@ -1666,19 +1664,6 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
         </div>
       </div>
     </article>
-  )
-}
-
-/** 긴 글은 세 줄까지만, «더 보기»로 펼친다 */
-function Clamp({ children }: { children: React.ReactNode }) {
-  const [more, setMore] = useState(false)
-  return (
-    <div className={`ob-clamp${more ? ' more' : ''}`}>
-      {children}
-      <button className="ob-clamp-btn" onClick={() => setMore((v) => !v)}>
-        {more ? '접기' : '더 보기'}
-      </button>
-    </div>
   )
 }
 
