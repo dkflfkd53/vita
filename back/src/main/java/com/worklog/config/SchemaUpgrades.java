@@ -24,6 +24,10 @@ public class SchemaUpgrades {
         addColumn("category", "color", "TEXT");
         // 카테고리 안의 세부 분류(JSON 배열, 예: ["기능개발","오류"]) · 할 일의 세부 분류
         addColumn("category", "subtypes", "TEXT");
+        // 개선 제안 단계(must 필수 · recommend 권장 · optional 선택)·단계 이유·예상 효과 한 줄
+        addColumn("agent_insight", "tier", "TEXT");
+        addColumn("agent_insight", "tier_reason", "TEXT");
+        addColumn("agent_insight", "effect", "TEXT");
         // 1 = 카테고리 통째로 숨김(보드·세션·리포트·AI 사용에서 빠짐, 기록은 남음)
         addColumn("category", "hidden", "INTEGER NOT NULL DEFAULT 0");
         addColumn("work_item", "subtype", "TEXT");

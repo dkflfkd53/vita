@@ -81,6 +81,18 @@ public class ObserverController {
     }
 
     /** write=true 면 고른 md 에 문안을 실제로 덧붙인다. false 면 "직접 넣었음"으로 기록만 */
+    /** 필수 단계 제안을 한꺼번에 도입 */
+    @PostMapping("/insights/adopt-must")
+    public Map<String, Integer> adoptMust(@RequestParam(defaultValue = "true") boolean write) throws IOException {
+        return Map.of("adopted", service.adoptMust(write));
+    }
+
+    /** 묶여 있는 제안을 규칙 하나씩으로 나누고 단계 다시 매기기 */
+    @PostMapping("/insights/reclassify")
+    public JobView reclassify() {
+        return service.submitReclassify().view();
+    }
+
     @PostMapping("/insights/{id}/adopt")
     public Insight adopt(@PathVariable long id, @RequestParam(defaultValue = "true") boolean write) throws IOException {
         return service.adopt(id, write);

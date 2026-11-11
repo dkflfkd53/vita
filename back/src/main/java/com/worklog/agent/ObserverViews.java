@@ -68,10 +68,12 @@ public final class ObserverViews {
                           String metric, String scope, String target, String targetLabel, String targetPath,
                           String snippet, String status, String adoptedAt, String appliedPath, boolean applied,
                           Double baseline, String baselineFrom, String baselineTo, Double after, String afterFrom,
-                          String afterTo, int afterDays, Double deltaPct, String verdict, String closedAt, String note) {
+                          String afterTo, int afterDays, Double deltaPct, String verdict, String closedAt, String note,
+                          String tier, String tierReason, String effect) {
     }
 
+    /** tier = must(필수: 사고·반복 정정, 부작용 거의 없음) · recommend(권장: 효과는 보이나 상황 한정) · optional(선택: 작업 방식·취향, 부작용 가능) */
     public record InsightRequest(String title, String problem, String metric, String scope, String target,
-                                 String snippet, String note, String status) {
+                                 String snippet, String note, String status, String tier, String tierReason, String effect) {
     }
 }

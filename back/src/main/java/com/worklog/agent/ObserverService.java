@@ -9,10 +9,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -138,7 +140,7 @@ public class ObserverService {
         return new Insight(r.id, r.createdAt, r.weekKey, r.source, r.title, r.problem, r.metric, r.scope, r.target,
                 t == null ? r.target : t.label(), t == null ? null : t.path(), r.snippet, r.status, r.adoptedAt, r.appliedPath,
                 r.target != null && targets.applied(r.id, r.target), r.baseline, r.baselineFrom, r.baselineTo, after,
-                afterFrom, afterTo, days, delta(r.baseline, after), verdict, r.closedAt, r.note);
+                afterFrom, afterTo, days, delta(r.baseline, after), verdict, r.closedAt, r.note, r.tier, r.tierReason, r.effect);
     }
 
     public long create(InsightRequest req, String source, String weekKey) {
@@ -147,11 +149,13 @@ public class ObserverService {
         }
         validate(req);
         return jdbc.sql("""
-                INSERT INTO agent_insight (created_at, week_key, source, title, problem, metric, scope, target, snippet, status, note)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'proposed', ?) RETURNING id
+                INSERT INTO agent_insight (created_at, week_key, source, title, problem, metric, scope, target, snippet, status, note,
+                                           tier, tier_reason, effect)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'proposed', ?, ?, ?, ?) RETURNING id
                 """).params(Instant.now().toString(), weekKey == null ? Period.weekKey(LocalDate.now(props.zone())) : weekKey,
                 source, req.title().strip(), blankToNull(req.problem()), blankToNull(req.metric()), normalizeScope(req.scope()),
-                blankToNull(req.target()), blankToNull(req.snippet()), blankToNull(req.note())).query(Long.class).single();
+                blankToNull(req.target()), blankToNull(req.snippet()), blankToNull(req.note()), tierOf(req.tier()),
+                blankToNull(req.tierReason()), blankToNull(req.effect())).query(Long.class).single();
     }
 
     public void update(long id, InsightRequest req) {
@@ -168,6 +172,9 @@ public class ObserverService {
         set(id, "target", req.target());
         set(id, "snippet", req.snippet());
         set(id, "note", req.note());
+        set(id, "tier", req.tier() == null ? null : tierOf(req.tier()));
+        set(id, "tier_reason", req.tierReason());
+        set(id, "effect", req.effect());
         if (req.status() != null) {
             if (!List.of("proposed", "rejected").contains(req.status())) {
                 throw new IllegalArgumentException("status 는 proposed·rejected 만 직접 바꿀 수 있습니다");
@@ -185,6 +192,79 @@ public class ObserverService {
             throw new IllegalStateException("파일에 들어가 있는 제안입니다 — 먼저 되돌리세요");
         }
         jdbc.sql("DELETE FROM agent_insight WHERE id = ?").param(id).update();
+    }
+
+    /** 필수 단계 제안을 한꺼번에 도입(지표·넣을 곳·문안이 갖춰진 것만). @return 도입한 개수 */
+    public int adoptMust(boolean write) throws IOException {
+        int n = 0;
+        for (InsightRow r : insightRows()) {
+            if ("proposed".equals(r.status) && "must".equals(r.tier) && r.metric != null && r.target != null && r.snippet != null) {
+                adopt(r.id, write);
+                n++;
+            }
+        }
+        return n;
+    }
+
+    /**
+     * 아직 도입 안 한 제안을 규칙 하나씩으로 쪼개고 단계·이유·효과를 다시 매긴다(묶여 있던 예전 제안 정리용).
+     * 원래 제안은 지우고 새 제안으로 바꾼다 — 근거·지표·범위·넣을 곳은 원래 것을 이어받는다
+     */
+    public JobService.Job submitReclassify() {
+        return jobs.submit("observer:reclassify", "개선 제안 나눠 정리", progress -> {
+            List<InsightRow> olds = insightRows().stream().filter(r -> "proposed".equals(r.status)).toList();
+            if (olds.isEmpty()) {
+                return "정리할 제안 없음";
+            }
+            StringBuilder in = new StringBuilder();
+            for (InsightRow r : olds) {
+                in.append("### id ").append(r.id).append(" — ").append(r.title).append('\n')
+                        .append("근거: ").append(r.problem == null ? "-" : r.problem).append('\n')
+                        .append("지표: ").append(r.metric).append(" · 넣을 곳: ").append(r.target).append('\n')
+                        .append("문안:\n").append(r.snippet == null ? "-" : r.snippet).append("\n\n");
+            }
+            String prompt = """
+                    아래는 AI 코딩 에이전트 사용 개선 제안들이다. 하나에 규칙이 여러 개 묶여 있어 사용자가 넣을지 고민한다.
+                    제안마다 문안의 규칙을 **규칙 하나씩** 따로 나누고(같은 말 반복은 합침), 각각 단계를 매긴다.
+                    - tier: must(필수: 실제 사고·권한 거절·같은 정정이 반복됐고 부작용 거의 없음) · recommend(권장: 효과는 숫자로 보이나
+                      특정 저장소·상황 한정) · optional(선택: 작업 방식·취향, 상황에 따라 손해일 수 있음). 애매하면 한 단계 낮게.
+                    - title: 그 규칙만 가리키는 한 줄 제목. snippet: 규칙 문안 1줄(마크다운 불릿 "- "로 시작, 원문의 명령·경로는 살림).
+                    - tierReason: 단계 이유 한 줄(숫자 포함, 30자 안팎). effect: 넣으면 무엇이 얼마나 줄지 한 줄.
+                    - from: 원래 제안 id(근거·지표·넣을 곳을 이어받는다).
+                    출력은 JSON 배열 하나만(설명·코드블록 없이):
+                    [{"from":1,"title":"…","tier":"must|recommend|optional","tierReason":"…","effect":"…","snippet":"- …"}]
+
+                    %s""".formatted(in);
+            progress.update("제안 나누는 중");
+            String out = claude.ask(prompt);
+            int s0 = out.indexOf('[');
+            int e0 = out.lastIndexOf(']');
+            if (s0 < 0 || e0 <= s0) {
+                throw new IOException("나눈 제안을 JSON 으로 받지 못함");
+            }
+            Map<Long, InsightRow> byId = new HashMap<>();
+            olds.forEach(r -> byId.put(r.id, r));
+            Set<Long> replaced = new HashSet<>();
+            int count = 0;
+            for (JsonNode n : MAPPER.readTree(out.substring(s0, e0 + 1))) {
+                InsightRow from = byId.get(n.path("from").asLong(-1));
+                String title = n.path("title").asText("").strip();
+                if (from == null || title.isEmpty()) {
+                    continue;
+                }
+                create(new InsightRequest(title, from.problem, from.metric, from.scope, from.target, n.path("snippet").asText(null),
+                        from.note, null, tierOf(n.path("tier").asText(null)), n.path("tierReason").asText(null),
+                        n.path("effect").asText(null)), from.source, from.weekKey);
+                replaced.add(from.id);
+                count++;
+            }
+            if (count == 0) {
+                throw new IOException("나눈 제안이 없음 — 원래 제안은 그대로 둠");
+            }
+            // 새 제안으로 바뀐 원래 제안만 지운다
+            replaced.forEach(id -> jdbc.sql("DELETE FROM agent_insight WHERE id = ?").param(id).update());
+            return olds.size() + "개 → " + count + "개로 나눔";
+        });
     }
 
     /** 도입: 기준값(직전 14일)을 고정하고, write 면 md 에 실제로 적는다 */
@@ -286,18 +366,26 @@ public class ObserverService {
         StringBuilder sb = new StringBuilder();
         sb.append("""
                 너는 AI 코딩 에이전트(Claude Code·Codex) 사용 습관 코치다. 아래는 한 개발자의 %s 에이전트 세션 관찰 결과다.
-                숫자와 사례를 근거로, 앞으로의 작업을 빠르고 싸고 덜 틀리게 만들 개선안을 1~3개 고른다.
+                숫자와 사례를 근거로, 앞으로의 작업을 빠르고 싸고 덜 틀리게 만들 개선안을 1~5개 고른다.
 
                 규칙
-                - 각 개선안은 Claude 가 매 세션 읽는 md(CLAUDE.md 또는 자동 메모리)에 넣을 **짧은 규칙 문안**으로 끝나야 한다.
-                - 문안은 Claude 에게 하는 지시문(한국어, 마크다운 불릿 1~4줄). 구체적 명령·경로·기준을 넣는다. 일반론 금지.
+                - **개선안 하나 = 규칙 하나.** 서로 다른 행동(문서 먼저 읽기 / 명령 목록 먼저 주기 …)은 따로 나눈다. 사용자가 하나씩 넣고 뺄 수 있게.
+                - 각 개선안은 Claude 가 매 세션 읽는 md(CLAUDE.md 또는 자동 메모리)에 넣을 짧은 규칙 문안으로 끝난다:
+                  지시문 한국어 마크다운 불릿 1줄(길면 2줄). 구체적 명령·경로·기준을 넣는다. 일반론 금지.
+                - tier(단계)를 매긴다 — 사용자가 고민 없이 넣을 것과 골라 넣을 것을 가르는 기준:
+                  must(필수) = 실제 사고·권한 거절·같은 정정이 반복됐고, 넣어도 다른 작업에 부작용이 거의 없는 것.
+                  recommend(권장) = 효과가 숫자로 보이지만 특정 저장소·상황에만 해당하는 것.
+                  optional(선택) = 작업 방식·취향을 바꾸는 것, 상황에 따라 오히려 손해일 수 있는 것.
+                  애매하면 한 단계 낮게(must 남발 금지).
+                - tierReason = 그 단계인 이유 한 줄(숫자 포함, 30자 안팎). effect = 넣으면 무엇이 얼마나 줄지 한 줄(예: "python 실패 주 23회 중 대부분 제거").
                 - 지금 규칙에 이미 있는 내용은 다시 제안하지 않는다. 이미 있는 제안 목록과도 겹치지 않게.
                 - metric 은 효과를 확인할 지표 키 하나. 그 지표가 실제로 움직일 개선만 고른다.
                 - scope 는 아래 '범위' 중 하나 또는 null(전체). target 은 아래 '넣을 곳' 키 중 하나 — 특정 저장소 일이면 그 저장소 memory, 공통이면 global.
-                - 근거가 약하면(표본이 적으면) 개수를 줄인다. 억지로 3개 채우지 않는다.
+                - 근거가 약하면(표본이 적으면) 개수를 줄인다. 억지로 채우지 않는다.
 
                 출력은 JSON 배열 하나만(설명·코드블록 표시 없이):
-                [{"title":"한 줄 제목","problem":"근거 — 숫자 포함 1~2문장","metric":"지표 키","scope":"범위 또는 null","target":"넣을 곳 키","snippet":"- 규칙 문안"}]
+                [{"title":"한 줄 제목","tier":"must|recommend|optional","tierReason":"단계 이유 한 줄","effect":"예상 효과 한 줄",
+                  "problem":"근거 — 숫자 포함 1~2문장","metric":"지표 키","scope":"범위 또는 null","target":"넣을 곳 키","snippet":"- 규칙 문안 1줄"}]
 
                 """.replace("%s", switch (o.kind()) {
             case "month" -> "이번 달";
@@ -378,9 +466,10 @@ public class ObserverService {
                     Metric.of(metric).isPresent() ? metric : null,
                     scope != null && this.scope.labels().contains(scope) ? scope : null,
                     tmap.containsKey(target) ? target : "global",
-                    n.path("snippet").asText(null), null, null));
+                    n.path("snippet").asText(null), null, null, tierOf(n.path("tier").asText(null)),
+                    n.path("tierReason").asText(null), n.path("effect").asText(null)));
         }
-        return list.stream().limit(3).toList();
+        return list.stream().limit(5).toList();
     }
 
     // ───────── 내부 ─────────
@@ -425,13 +514,14 @@ public class ObserverService {
         long id;
         String createdAt, weekKey, source, title, problem, metric, scope, target, snippet, status, adoptedAt, appliedPath;
         Double baseline, result;
-        String baselineFrom, baselineTo, resultFrom, resultTo, verdict, closedAt, note;
+        String baselineFrom, baselineTo, resultFrom, resultTo, verdict, closedAt, note, tier, tierReason, effect;
     }
 
     private List<InsightRow> insightRows() {
         return jdbc.sql("""
                 SELECT id, created_at, week_key, source, title, problem, metric, scope, target, snippet, status, adopted_at,
-                       applied_path, baseline, baseline_from, baseline_to, result, result_from, result_to, verdict, closed_at, note
+                       applied_path, baseline, baseline_from, baseline_to, result, result_from, result_to, verdict, closed_at, note,
+                       tier, tier_reason, effect
                 FROM agent_insight
                 ORDER BY CASE status WHEN 'adopted' THEN 0 WHEN 'proposed' THEN 1 WHEN 'done' THEN 2 ELSE 3 END, id DESC
                 """).query((rs, i) -> {
@@ -458,6 +548,9 @@ public class ObserverService {
             r.verdict = rs.getString(20);
             r.closedAt = rs.getString(21);
             r.note = rs.getString(22);
+            r.tier = rs.getString(23);
+            r.tierReason = rs.getString(24);
+            r.effect = rs.getString(25);
             return r;
         }).list();
     }
@@ -478,6 +571,16 @@ public class ObserverService {
         if (req.metric() != null && !req.metric().isBlank() && Metric.of(req.metric()).isEmpty()) {
             throw new IllegalArgumentException("모르는 지표: " + req.metric());
         }
+        if (req.tier() != null && !req.tier().isBlank() && !TIERS.contains(req.tier())) {
+            throw new IllegalArgumentException("단계는 must·recommend·optional: " + req.tier());
+        }
+    }
+
+    static final List<String> TIERS = List.of("must", "recommend", "optional");
+
+    /** 모르는 값·빈 값은 recommend(가운데) */
+    private static String tierOf(String tier) {
+        return tier != null && TIERS.contains(tier) ? tier : "recommend";
     }
 
     private static String normalizeScope(String scope) {

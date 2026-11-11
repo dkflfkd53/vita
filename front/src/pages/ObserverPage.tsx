@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLastJob, useRunningJob, useSettings, useStartJob } from '../api/hooks'
 import { api } from '../api/client'
-import type { Insight, InsightPatch, InsightTarget, MetricDef, Observer, ObsBreakdown, PeriodKind } from '../api/types'
+import type { Insight, InsightPatch, InsightTarget, InsightTier, MetricDef, Observer, ObsBreakdown, PeriodKind } from '../api/types'
 import { Icon } from '../components/Icon'
 import { ErrorBox, Loading, ProjectLabel } from '../components/common'
 import { UsageOverviewSection } from '../components/UsageOverview'
@@ -522,7 +522,12 @@ function InsightSection({ week, defs, insights, loading }: { week: string; defs:
                 </button>
               )}
             </div>
-            {!hidden && items.map((i) => <InsightCard key={i.id} insight={i} defs={defs} targets={targets.data ?? []} />)}
+            {!hidden &&
+              (g.status === 'proposed' ? (
+                <ProposedByTier items={items} defs={defs} targets={targets.data ?? []} />
+              ) : (
+                items.map((i) => <InsightCard key={i.id} insight={i} defs={defs} targets={targets.data ?? []} />)
+              ))}
           </div>
         )
       })}
@@ -531,6 +536,85 @@ function InsightSection({ week, defs, insights, loading }: { week: string; defs:
 }
 
 const VERDICT_TONE: Record<string, string> = { 개선: 'good', 악화: 'bad', '변화 없음': 'flat', '측정 중': 'wait' }
+
+const TIERS: { key: InsightTier; name: string; tip: string }[] = [
+  { key: 'must', name: '필수', tip: '실제 사고·권한 거절·같은 정정이 반복됐고, 넣어도 부작용이 거의 없는 규칙 — 고민 없이 넣어도 돼요' },
+  { key: 'recommend', name: '권장', tip: '효과는 숫자로 보이지만 특정 저장소·상황에만 해당 — 해당 작업을 자주 하면 넣으세요' },
+  { key: 'optional', name: '선택', tip: '작업 방식·취향을 바꾸는 규칙, 상황에 따라 손해일 수 있음 — 2주 실험으로 넣고 효과 없으면 빼세요' },
+]
+const tierOf = (i: Insight): InsightTier => i.tier ?? 'recommend'
+
+/** 제안을 필수 → 권장 → 선택으로 묶고, 필수는 한 번에 도입. 묶인 예전 제안은 규칙 하나씩으로 나눠 정리 */
+function ProposedByTier({ items, defs, targets }: { items: Insight[]; defs: MetricDef[]; targets: InsightTarget[] }) {
+  const qc = useQueryClient()
+  const [confirmMust, setConfirmMust] = useState(false)
+  const must = items.filter((i) => tierOf(i) === 'must' && i.metric && i.target && i.snippet)
+  const adoptMust = useInsightMutation(() => api.adoptMustInsights())
+  const running = useRunningJob('observer:reclassify')
+  const last = useLastJob('observer:reclassify')
+  const reclassify = useStartJob(() => api.reclassifyInsights())
+  // 정리가 끝나면 목록을 다시 읽는다
+  const doneId = last?.status === 'DONE' ? last.id : null
+  useEffect(() => {
+    if (doneId) qc.invalidateQueries({ queryKey: ['insights'] })
+  }, [doneId, qc])
+  const needsSplit = items.some((i) => !i.tier || (i.snippet ?? '').trim().split('\n').length > 2)
+  return (
+    <>
+      <div className="ob-tier-bar">
+        {confirmMust ? (
+          <>
+            <span>필수 {must.length}개를 각 md 에 넣고 측정을 시작할까요?</span>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                adoptMust.mutate(undefined)
+                setConfirmMust(false)
+              }}
+            >
+              넣고 도입
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setConfirmMust(false)}>
+              취소
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="btn btn-primary btn-sm" disabled={must.length === 0 || adoptMust.isPending} onClick={() => setConfirmMust(true)}>
+              필수 {must.length}개 한 번에 도입
+            </button>
+            <button
+              className={`btn btn-sm${needsSplit ? '' : ' btn-ghost'}`}
+              disabled={!!running || reclassify.isPending}
+              onClick={() => reclassify.mutate(undefined)}
+              title="규칙 여러 개가 묶인 제안을 하나씩 나누고 필수·권장·선택을 다시 매겨요(도입 안 한 제안만)"
+            >
+              {running ? (running.message ?? '나누는 중') : '제안 나눠 정리'}
+            </button>
+            {!running && last?.status === 'DONE' && <span className="subtle">{last.message}</span>}
+            {!running && last?.status === 'FAILED' && <span className="bad">{last.message}</span>}
+          </>
+        )}
+        {adoptMust.isError && <span className="bad">{(adoptMust.error as Error).message}</span>}
+      </div>
+      {TIERS.map((t) => {
+        const list = items.filter((i) => tierOf(i) === t.key)
+        if (list.length === 0) return null
+        return (
+          <div key={t.key} className="ob-tier">
+            <div className={`ob-tier-title ${t.key}`} title={t.tip}>
+              {t.name} <span className="count">{list.length}</span>
+              <span className="subtle">{t.tip}</span>
+            </div>
+            {list.map((i) => (
+              <InsightCard key={i.id} insight={i} defs={defs} targets={targets} />
+            ))}
+          </div>
+        )
+      })}
+    </>
+  )
+}
 
 function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: MetricDef[]; targets: InsightTarget[] }) {
   const scopes = useScopes()
@@ -547,6 +631,72 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
   const err = [patch, adopt, revert, close, reopen, remove, write].find((m) => m.isError)?.error as Error | undefined
   const target = targets.find((t) => t.key === i.target)
   const [copied, setCopied] = useState(false)
+  const [open, setOpen] = useState(false)
+  const tier = TIERS.find((t) => t.key === tierOf(i))!
+  // 선택 규칙이 측정해 보니 효과가 없으면 빼기를 권한다
+  const dropHint = tierOf(i) === 'optional' && (i.status === 'adopted' || i.status === 'done') && (i.verdict === '변화 없음' || i.verdict === '악화')
+
+  // 제안 상태는 짧게 — 단계·제목·규칙 한 줄·예상 효과, 나머지는 '자세히'
+  if (editable && !open) {
+    return (
+      <article className={`ob-ins ${i.status} compact`}>
+        <div className="ob-ins-top">
+          <span className={`ob-tier-chip ${tier.key}`} title={i.tierReason ?? tier.tip}>
+            {tier.name}
+          </span>
+          <h4 className="ob-ins-title">{i.title}</h4>
+        </div>
+        {i.snippet && <div className="ob-ins-rule">{i.snippet.replace(/^\s*-\s*/, '')}</div>}
+        <div className="ob-ins-why subtle">
+          {i.effect && <span>예상: {i.effect}</span>}
+          {i.tierReason && <span>근거: {i.tierReason}</span>}
+        </div>
+        {err && <div className="ob-error">{err.message}</div>}
+        {confirm === 'write' ? (
+          <div className="ob-confirm">
+            <span>{`${target?.path ?? i.target} 에 문안을 넣고 측정을 시작할까요?`}</span>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                adopt.mutate(true)
+                setConfirm(null)
+              }}
+            >
+              넣고 도입
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setConfirm(null)}>
+              취소
+            </button>
+          </div>
+        ) : (
+          <div className="ob-ins-actions">
+            <button className="btn btn-primary btn-sm" disabled={!i.snippet || !i.target || !i.metric} onClick={() => setConfirm('write')} title={!i.metric ? '자세히에서 지표를 먼저 고르세요' : ''}>
+              도입
+            </button>
+            {i.status === 'proposed' ? (
+              <button className="btn btn-ghost btn-sm" onClick={() => patch.mutate({ status: 'rejected' })}>
+                기각
+              </button>
+            ) : (
+              <button className="btn btn-ghost btn-sm" onClick={() => patch.mutate({ status: 'proposed' })}>
+                제안으로 되살리기
+              </button>
+            )}
+            <select className="ob-tier-select" value={tierOf(i)} onChange={(e) => patch.mutate({ tier: e.target.value as InsightTier })} title="단계 바꾸기">
+              {TIERS.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>
+              자세히
+            </button>
+          </div>
+        )}
+      </article>
+    )
+  }
 
   return (
     <article className={`ob-ins ${i.status}`}>
@@ -557,7 +707,16 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
           <h4 className="ob-ins-title">{i.title}</h4>
         )}
         <span className="ob-ins-meta subtle">
-          #{i.id} · {i.source === 'ai' ? 'AI 제안' : '직접'} · {fmtDateTime(i.createdAt)}
+          <span className={`ob-tier-chip ${tier.key}`} title={i.tierReason ?? tier.tip}>
+            {tier.name}
+          </span>
+          {dropHint && <span className="ob-drop-hint">빼기 권유 — 선택 규칙인데 효과가 없어요</span>} #{i.id} · {i.source === 'ai' ? 'AI 제안' : '직접'} ·{' '}
+          {fmtDateTime(i.createdAt)}
+          {editable && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>
+              접기
+            </button>
+          )}
         </span>
       </div>
 

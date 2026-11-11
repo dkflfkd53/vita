@@ -565,7 +565,15 @@ export interface Insight {
   verdict: string | null
   closedAt: string | null
   note: string | null
+  /** must 필수 · recommend 권장 · optional 선택 */
+  tier: InsightTier | null
+  /** 그 단계인 이유 한 줄 */
+  tierReason: string | null
+  /** 넣으면 무엇이 얼마나 줄지 한 줄 */
+  effect: string | null
 }
+
+export type InsightTier = 'must' | 'recommend' | 'optional'
 
 export interface InsightPatch {
   title?: string
@@ -576,6 +584,7 @@ export interface InsightPatch {
   snippet?: string
   note?: string
   status?: 'proposed' | 'rejected'
+  tier?: InsightTier
 }
 
 // ───────── 설정 ─────────

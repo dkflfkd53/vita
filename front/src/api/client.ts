@@ -125,6 +125,8 @@ export const api = {
   updateInsight: (id: number, patch: InsightPatch) =>
     request<void>(`/observer/insights/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteInsight: (id: number) => request<void>(`/observer/insights/${id}`, { method: 'DELETE' }),
+  adoptMustInsights: () => request<{ adopted: number }>('/observer/insights/adopt-must?write=true', { method: 'POST' }),
+  reclassifyInsights: () => request<JobView>('/observer/insights/reclassify', { method: 'POST' }),
   adoptInsight: (id: number, write: boolean) => request<Insight>(`/observer/insights/${id}/adopt?write=${write}`, { method: 'POST' }),
   writeInsight: (id: number) => request<void>(`/observer/insights/${id}/write`, { method: 'POST' }),
   revertInsight: (id: number) => request<void>(`/observer/insights/${id}/revert`, { method: 'POST' }),
