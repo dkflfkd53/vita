@@ -1492,3 +1492,14 @@ a.ob-line-cell:hover b { text-decoration: underline; }
 .side-rail-live { border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 12px; color: var(--text-muted); cursor: pointer; padding: 6px 4px; border-radius: 6px; margin-top: 6px; }
 .side-rail-live:hover { background: var(--surface-hover); }
 .side-rail-job { padding-bottom: 14px; }
+/* 개선 제안 — 줄은 그대로, 아래로 상세가 열린다 */
+.ob-ins.compact.open { background: var(--bg-inset); }
+.ob-ins-detail { display: flex; flex-direction: column; gap: 8px; padding: 2px 10px 12px; }
+.ob-ins-detail .ob-ins-top { align-items: center; }
+.ob-line-chev svg { transition: transform 0.15s; }
+.ob-line-chev.open svg { transform: rotate(90deg); }
+/* 펼친 상세의 글은 한 줄을 짧게 — 눈이 좌우로 덜 오가게 */
+.ob-ins-detail > * { max-width: 760px; }
+.ob-ins-detail .ob-ins-top { max-width: none; }
+.ob-how ul, .ob-score-how { max-width: 760px; }
+.ob-scan-text { max-width: 760px; }

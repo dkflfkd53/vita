@@ -1413,16 +1413,14 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
     `매 세션 약 ${tok(i.load.targetTokens)} → ${tok(i.load.targetTokens + i.load.always)}` +
     (i.load.targetTokens > 0 ? `(+${((100 * i.load.always) / i.load.targetTokens).toFixed(1)}%)` : '') +
     (overBudget(i.target) ? ' · 이 곳은 Vita 규칙 상한이에요' : '')
-  // 접힌 줄 = 한 줄 요약(도입 효과 표와 같은 꼴): 규칙(제목·무엇을 줄이나) · 늘어날 읽기 · 넣을 곳 · 할 일. 누르면 펼친다
-  if (!open) {
-    const v = i.verdict ?? '측정 중'
-    const measured = i.status === 'adopted' || i.status === 'done'
-    const canDrop = i.status === 'done' && (v === '변화 없음' || v === '악화')
-    const over = overBudget(i.target) && (i.status === 'proposed' || i.status === 'rejected')
-    return (
-      <article className={`ob-ins ${i.status} compact`} ref={cardRef}>
-        <div className="ob-line">
-          <button className="ob-line-main" onClick={() => setOpen(true)} title="눌러서 규칙 문안·근거·지표 보기">
+  // 한 줄 요약(도입 효과 표와 같은 꼴): 규칙(제목·무엇을 줄이나) · 늘어날 읽기 · 넣을 곳 · 할 일. 누르면 그 아래로 상세가 열린다
+  const v = i.verdict ?? '측정 중'
+  const measured = i.status === 'adopted' || i.status === 'done'
+  const canDrop = i.status === 'done' && (v === '변화 없음' || v === '악화')
+  const over = overBudget(i.target) && (i.status === 'proposed' || i.status === 'rejected')
+  const line = (
+    <div className="ob-line">
+          <button className="ob-line-main" onClick={() => setOpen((x) => !x)} title={open ? '접기' : '눌러서 규칙 문안·근거·지표 보기'}>
             <b>{i.title}</b>
             {i.effect && <span className="subtle">{i.effect}</span>}
           </button>
@@ -1464,11 +1462,16 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
                 규칙 빼기
               </button>
             )}
-            <button className="btn btn-ghost icon-btn btn-sm" onClick={() => setOpen(true)} aria-label="펼치기">
+            <button className={`btn btn-ghost icon-btn btn-sm ob-line-chev${open ? ' open' : ''}`} onClick={() => setOpen((x) => !x)} aria-label={open ? '접기' : '펼치기'} aria-expanded={open}>
               <Icon name="chevron" size={12} />
             </button>
           </span>
         </div>
+  )
+  if (!open) {
+    return (
+      <article className={`ob-ins ${i.status} compact`} ref={cardRef}>
+        {line}
         {err && <div className="ob-error">{err.message}</div>}
         {confirm && (
           <div className="ob-confirm">
@@ -1496,12 +1499,14 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
   }
 
   return (
-    <article className={`ob-ins ${i.status}${focused ? ' focus' : ''}`} ref={cardRef}>
+    <article className={`ob-ins ${i.status} compact open${focused ? ' focus' : ''}`} ref={cardRef}>
+      {line}
+      <div className="ob-ins-detail">
       <div className="ob-ins-top">
         {editable ? (
-          <InlineText className="ob-ins-title" value={i.title} onSave={(v) => v && patch.mutate({ title: v })} />
+          <InlineText className="ob-ins-title" value={i.title} onSave={(t) => t && patch.mutate({ title: t })} />
         ) : (
-          <h4 className="ob-ins-title">{i.title}</h4>
+          <span />
         )}
         <span className="ob-ins-meta subtle">
           <span className={`ob-tier-chip ${tier.key}`} title={i.tierReason ?? tier.tip}>
@@ -1509,9 +1514,6 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
           </span>
           {dropHint && <span className="ob-drop-hint">빼기 권유 — 선택 규칙인데 효과가 없어요</span>} #{i.id} · {i.source === 'ai' ? 'AI 제안' : '직접'} ·{' '}
           {fmtDateTime(i.createdAt)}
-          <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>
-            접기
-          </button>
         </span>
       </div>
 
@@ -1691,6 +1693,7 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
           )}
         </div>
       )}
+      </div>
     </article>
   )
 }
