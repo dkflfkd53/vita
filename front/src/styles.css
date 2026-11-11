@@ -1416,3 +1416,28 @@ button.ob-score-row:hover { background: var(--row-hover); }
 }
 .ob-tile.tone-bad .ob-tile-sub { color: var(--c-red); }
 .ob-tile.tone-warn .ob-tile-sub { color: var(--sun-ink); }
+/* 개선 제안 — 한 줄 요약(도입 효과 표와 같은 꼴) */
+.ob-ins.compact { border: 0; border-bottom: 1px solid var(--border-muted); border-radius: 0; box-shadow: none; padding: 0; background: none; opacity: 1; }
+.ob-ins.compact.rejected .ob-line-main { opacity: 0.6; }
+.ob-tier, .ob-list { gap: 0; }
+.ob-line { display: grid; grid-template-columns: minmax(0, 1fr) 120px 190px 170px; gap: 14px; align-items: center; padding: 8px 6px; }
+.ob-line-head { padding: 4px 6px; font-size: 12px; color: var(--text-subtle); font-weight: 600; border-bottom: 1px solid var(--border-muted); }
+.ob-line-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; text-align: left; border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.ob-line-main b { font-size: 14.5px; font-weight: 600; }
+.ob-line-main .subtle { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ob-line-main:hover b { text-decoration: underline; text-underline-offset: 3px; }
+.ob-line-cell { display: flex; flex-direction: column; gap: 1px; font-variant-numeric: tabular-nums; min-width: 0; font-size: 13px; }
+.ob-line-cell b { font-size: 14px; font-weight: 600; }
+.ob-line-cell .subtle { font-size: 12px; }
+a.ob-line-cell:hover b { text-decoration: underline; }
+.ob-line-cell.over b, .ob-line-cell.over .subtle { color: var(--c-red); }
+.ob-line-target { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.ob-line-act { display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
+.ob-tier-title { margin: 12px 0 0; padding: 0 6px 4px; }
+.ob-ins.compact .ob-confirm { padding: 0 6px 8px; }
+@media (max-width: 900px) {
+  .ob-line { grid-template-columns: 1fr auto; }
+  .ob-line-head { display: none; }
+  .ob-line-main { grid-column: 1 / -1; }
+  .ob-line-target { display: none; }
+}
