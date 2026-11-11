@@ -184,8 +184,11 @@ button { font: inherit; color: inherit; }
 }
 .btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--border-strong); }
 .btn:disabled { opacity: 0.55; cursor: default; }
-.btn-primary { background: var(--ink); border-color: transparent; color: var(--bg); }
-.btn-primary:hover:not(:disabled) { background: var(--ink-hover); border-color: transparent; }
+/* 주요 버튼 — 검정 덩어리 대신 옅은 탠저린 바탕 + 진한 주황 글자(눈에 띄되 무겁지 않게) */
+.btn-primary { background: var(--primary-bg); border-color: var(--primary-border); color: var(--primary-ink); font-weight: 600; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-bg-hover); border-color: var(--primary-ink); color: var(--primary-ink); }
+:root { --primary-bg: #fdeee3; --primary-bg-hover: #fbe0cc; --primary-border: rgba(214, 104, 38, 0.38); --primary-ink: #9c4513; }
+:root[data-theme='dark'] { --primary-bg: rgba(246, 153, 90, 0.15); --primary-bg-hover: rgba(246, 153, 90, 0.24); --primary-border: rgba(246, 153, 90, 0.42); --primary-ink: #f8b98c; }
 .btn-ghost { background: transparent; border-color: transparent; color: var(--text-muted); }
 .btn-ghost:hover:not(:disabled) { background: var(--surface-hover); border-color: transparent; color: var(--text); }
 .btn-sm { height: 26px; padding: 0 8px; font-size: 13px; }
@@ -1440,4 +1443,38 @@ a.ob-line-cell:hover b { text-decoration: underline; }
   .ob-line-head { display: none; }
   .ob-line-main { grid-column: 1 / -1; }
   .ob-line-target { display: none; }
+}
+/* 개선 탭은 폭을 묶어 눈이 좌우로 덜 오가게 */
+.ob-line { grid-template-columns: minmax(0, 1fr) 96px 160px 140px; gap: 12px; padding: 7px 4px; }
+.ob-line-head { padding: 4px; }
+.ob-score-row { grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 0.6fr) 200px; gap: 12px; padding: 8px 4px; }
+.ob-score-headrow { padding: 6px 4px 4px; }
+.ob-tier-title { padding: 0 4px 4px; }
+.ob-load-row { grid-template-columns: minmax(140px, 220px) 1fr 140px 96px auto; gap: 10px; }
+@media (max-width: 900px) {
+  .ob-line { grid-template-columns: 1fr auto; }
+  .ob-score-row { grid-template-columns: 1fr 1fr; }
+  .ob-load-row { grid-template-columns: 1fr auto; }
+}
+/* 제목 칸이 남는 폭을 다 먹지 않게 — 숫자·버튼이 제목 바로 옆에 붙는다 */
+.ob-line { grid-template-columns: minmax(0, 520px) 92px 150px auto; justify-content: start; column-gap: 20px; }
+.ob-score-row { grid-template-columns: minmax(0, 360px) 150px 170px 100px auto; justify-content: start; column-gap: 20px; }
+@media (max-width: 900px) {
+  .ob-line { grid-template-columns: 1fr auto; }
+  .ob-score-row { grid-template-columns: 1fr 1fr; }
+}
+/* 마지막 칸도 고정 폭 — 줄마다 버튼·결과 글자 길이가 달라도 앞 칸이 흔들리지 않게 */
+.ob-line { grid-template-columns: minmax(0, 520px) 92px 150px 150px; }
+.ob-line-act { justify-content: flex-start; }
+.ob-score-row { grid-template-columns: minmax(0, 340px) 140px 160px 90px 210px; }
+@media (max-width: 900px) {
+  .ob-line { grid-template-columns: 1fr auto; }
+  .ob-score-row { grid-template-columns: 1fr 1fr; }
+}
+/* 개선 탭 표 — 화면 폭을 채우되(가운데 정렬 유지) 제목 칸이 혼자 다 먹지 않게 비율로 */
+.ob-line { grid-template-columns: minmax(0, 2.4fr) minmax(90px, 0.6fr) minmax(140px, 1fr) 160px; justify-content: stretch; column-gap: 16px; }
+.ob-score-row { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.7fr) 210px; justify-content: stretch; column-gap: 16px; }
+@media (max-width: 900px) {
+  .ob-line { grid-template-columns: 1fr auto; }
+  .ob-score-row { grid-template-columns: 1fr 1fr; }
 }

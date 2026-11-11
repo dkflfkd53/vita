@@ -582,7 +582,7 @@ function ImproveTab({ insights, loading }: { insights: Insight[] | undefined; lo
   }
 
   return (
-    <div className="ob">
+    <div className="ob ob-improve">
       <ImproveTiles view={view} onPick={goView} insights={list} />
       {view === 'effect' && <OutcomeCard defs={defs.data ?? []} />}
       {view === 'load' && <RuleLoadCard />}
