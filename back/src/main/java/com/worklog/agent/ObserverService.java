@@ -10,6 +10,8 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -27,10 +29,12 @@ import com.worklog.agent.ObserverViews.InsightRequest;
 import com.worklog.agent.ObserverViews.MetricDef;
 import com.worklog.agent.ObserverViews.Observer;
 import com.worklog.agent.ObserverViews.Snapshot;
+import com.worklog.agent.ObserverViews.SourceSession;
 import com.worklog.agent.ObserverViews.Target;
 import com.worklog.agent.ObserverViews.TrendPoint;
 import com.worklog.collect.CollectScheduler;
 import com.worklog.config.ProjectScope;
+import com.worklog.query.TaskCatalog;
 import com.worklog.config.WorklogProperties;
 import com.worklog.report.Period;
 import com.worklog.summary.ClaudeCli;
@@ -66,6 +70,7 @@ public class ObserverService {
     private final JobService jobs;
     private final CollectScheduler collector;
     private final ProjectScope scope;
+    private final TaskCatalog catalog;
 
     public Observer observer(String weekKey, String scope) {
         return observer("week", weekKey, scope);
@@ -140,7 +145,8 @@ public class ObserverService {
         return new Insight(r.id, r.createdAt, r.weekKey, r.source, r.title, r.problem, r.metric, r.scope, r.target,
                 t == null ? r.target : t.label(), t == null ? null : t.path(), r.snippet, r.status, r.adoptedAt, r.appliedPath,
                 r.target != null && targets.applied(r.id, r.target), r.baseline, r.baselineFrom, r.baselineTo, after,
-                afterFrom, afterTo, days, delta(r.baseline, after), verdict, r.closedAt, r.note, r.tier, r.tierReason, r.effect);
+                afterFrom, afterTo, days, delta(r.baseline, after), verdict, r.closedAt, r.note, r.tier, r.tierReason, r.effect,
+                r.sessions);
     }
 
     public long create(InsightRequest req, String source, String weekKey) {
@@ -150,12 +156,12 @@ public class ObserverService {
         validate(req);
         return jdbc.sql("""
                 INSERT INTO agent_insight (created_at, week_key, source, title, problem, metric, scope, target, snippet, status, note,
-                                           tier, tier_reason, effect)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'proposed', ?, ?, ?, ?) RETURNING id
+                                           tier, tier_reason, effect, sessions)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'proposed', ?, ?, ?, ?, ?) RETURNING id
                 """).params(Instant.now().toString(), weekKey == null ? Period.weekKey(LocalDate.now(props.zone())) : weekKey,
                 source, req.title().strip(), blankToNull(req.problem()), blankToNull(req.metric()), normalizeScope(req.scope()),
                 blankToNull(req.target()), blankToNull(req.snippet()), blankToNull(req.note()), tierOf(req.tier()),
-                blankToNull(req.tierReason()), blankToNull(req.effect())).query(Long.class).single();
+                blankToNull(req.tierReason()), blankToNull(req.effect()), sessionsJson(req.sessions())).query(Long.class).single();
     }
 
     public void update(long id, InsightRequest req) {
@@ -254,7 +260,7 @@ public class ObserverService {
                 }
                 create(new InsightRequest(title, from.problem, from.metric, from.scope, from.target, n.path("snippet").asText(null),
                         from.note, null, tierOf(n.path("tier").asText(null)), n.path("tierReason").asText(null),
-                        n.path("effect").asText(null)), from.source, from.weekKey);
+                        n.path("effect").asText(null), from.sessions), from.source, from.weekKey);
                 replaced.add(from.id);
                 count++;
             }
@@ -352,7 +358,7 @@ public class ObserverService {
             Observer o = observer(kind, weekKey, sc);
             progress.update("Claude 가 개선 제안 작성 중");
             String out = claude.ask(prompt(o));
-            List<InsightRequest> list = parseProposals(out);
+            List<InsightRequest> list = parseProposals(out, o);
             // 아직 손대지 않은 같은 주 AI 제안은 새 것으로 바꾼다
             jdbc.sql("DELETE FROM agent_insight WHERE week_key = ? AND source = 'ai' AND status = 'proposed'").param(weekKey).update();
             for (InsightRequest req : list) {
@@ -380,12 +386,15 @@ public class ObserverService {
                 - tierReason = 그 단계인 이유 한 줄(숫자 포함, 30자 안팎). effect = 넣으면 무엇이 얼마나 줄지 한 줄(예: "python 실패 주 23회 중 대부분 제거").
                 - 지금 규칙에 이미 있는 내용은 다시 제안하지 않는다. 이미 있는 제안 목록과도 겹치지 않게.
                 - metric 은 효과를 확인할 지표 키 하나. 그 지표가 실제로 움직일 개선만 고른다.
-                - scope 는 아래 '범위' 중 하나 또는 null(전체). target 은 아래 '넣을 곳' 키 중 하나 — 특정 저장소 일이면 그 저장소 memory, 공통이면 global.
+                - sessions = 이 문제가 실제로 일어난 세션 제목 1~3개. 입력(정정 요청·도구 실패·여러 번 고친 파일·비용 큰 세션)의 [세션 제목]을 글자 그대로.
+                - scope 는 아래 '범위' 중 하나 또는 null(전체). target 은 아래 '넣을 곳' 키 중 하나 — 문제가 한 저장소 세션에서만 났으면 그 저장소 memory,
+                  여러 저장소에 걸쳤으면 global(그 저장소 세션만 규칙을 읽으므로).
                 - 근거가 약하면(표본이 적으면) 개수를 줄인다. 억지로 채우지 않는다.
 
                 출력은 JSON 배열 하나만(설명·코드블록 표시 없이):
                 [{"title":"한 줄 제목","tier":"must|recommend|optional","tierReason":"단계 이유 한 줄","effect":"예상 효과 한 줄",
-                  "problem":"근거 — 숫자 포함 1~2문장","metric":"지표 키","scope":"범위 또는 null","target":"넣을 곳 키","snippet":"- 규칙 문안 1줄"}]
+                  "problem":"근거 — 숫자 포함 1~2문장","sessions":["세션 제목"],"metric":"지표 키","scope":"범위 또는 null","target":"넣을 곳 키",
+                  "snippet":"- 규칙 문안 1줄"}]
 
                 """.replace("%s", switch (o.kind()) {
             case "month" -> "이번 달";
@@ -444,7 +453,7 @@ public class ObserverService {
         return sb.toString();
     }
 
-    List<InsightRequest> parseProposals(String out) throws IOException {
+    List<InsightRequest> parseProposals(String out, Observer o) throws IOException {
         int s = out.indexOf('[');
         int e = out.lastIndexOf(']');
         if (s < 0 || e <= s) {
@@ -462,14 +471,106 @@ public class ObserverService {
             String metric = n.path("metric").asText(null);
             String scope = n.path("scope").asText(null);
             String target = n.path("target").asText(null);
+            List<String> titles = new ArrayList<>();
+            n.path("sessions").forEach(t -> titles.add(t.asText("").strip()));
+            List<SourceSession> sessions = sessionsByTitle(titles, o);
             list.add(new InsightRequest(title, n.path("problem").asText(null),
                     Metric.of(metric).isPresent() ? metric : null,
                     scope != null && this.scope.labels().contains(scope) ? scope : null,
-                    tmap.containsKey(target) ? target : "global",
+                    recommendTarget(tmap.containsKey(target) ? target : "global", sessions, tmap),
                     n.path("snippet").asText(null), null, null, tierOf(n.path("tier").asText(null)),
-                    n.path("tierReason").asText(null), n.path("effect").asText(null)));
+                    n.path("tierReason").asText(null), n.path("effect").asText(null), sessions));
         }
         return list.stream().limit(5).toList();
+    }
+
+    // ───────── 발생 세션 ─────────
+
+    /** AI 가 고른 세션 제목 → 이 기간 관찰 데이터(비용 큰 세션·실패·정정·여러 번 고친 파일)의 세션. 못 찾은 제목은 뺀다 */
+    private List<SourceSession> sessionsByTitle(List<String> titles, Observer o) {
+        Map<String, String> keyOf = new LinkedHashMap<>();
+        o.sessions().forEach(x -> keyOf.putIfAbsent(x.title(), x.taskKey()));
+        o.errors().forEach(x -> keyOf.putIfAbsent(x.sessionTitle(), x.taskKey()));
+        o.corrections().forEach(x -> keyOf.putIfAbsent(x.sessionTitle(), x.taskKey()));
+        o.rework().forEach(x -> keyOf.putIfAbsent(x.sessionTitle(), x.taskKey()));
+        List<SourceSession> out = new ArrayList<>();
+        for (String t : titles) {
+            String key = keyOf.get(t);
+            if (t.isEmpty() || key == null || out.stream().anyMatch(s -> s.taskKey().equals(key))) {
+                continue;
+            }
+            out.add(new SourceSession(t, key, repoOf(key)));
+        }
+        return out.stream().limit(3).toList();
+    }
+
+    /** 작업 묶음 키(= 그 묶음 첫 세션 id)의 저장소 이름 */
+    private String repoOf(String taskKey) {
+        return jdbc.sql("SELECT project FROM session WHERE id = ?").param(taskKey).query(String.class).optional().orElse(null);
+    }
+
+    /** 발생 세션이 한 저장소뿐이면 그 저장소 메모리, 여러 저장소면 전역(그 저장소 세션만 규칙을 읽으므로). 모르면 AI 가 고른 대로 */
+    static String recommendTarget(String chosen, List<SourceSession> sessions, Map<String, Target> tmap) {
+        Set<String> repos = new LinkedHashSet<>();
+        sessions.forEach(s -> {
+            if (s.repo() != null) {
+                repos.add(s.repo());
+            }
+        });
+        if (repos.size() == 1 && tmap.containsKey("memory:" + repos.iterator().next())) {
+            return "memory:" + repos.iterator().next();
+        }
+        return repos.size() > 1 ? "global" : chosen;
+    }
+
+    /** 발생 세션이 비어 있는 제안에 근거 문장 속 세션 제목으로 세션을 찾아 붙인다(예전 제안용, AI 안 씀). @return 붙인 제안 수 */
+    public int linkSessions() {
+        TaskCatalog.Index index = catalog.buildForWork();
+        List<TaskCatalog.Task> tasks = index.tasks().values().stream()
+                .filter(t -> t.title() != null && t.title().strip().length() >= 4)
+                .sorted(Comparator.comparingInt((TaskCatalog.Task t) -> t.title().length()).reversed()).toList();
+        int n = 0;
+        for (InsightRow r : insightRows()) {
+            if (!r.sessions.isEmpty() || r.problem == null) {
+                continue;
+            }
+            List<SourceSession> found = new ArrayList<>();
+            for (TaskCatalog.Task t : tasks) {
+                if (r.problem.contains(t.title().strip()) && found.stream().noneMatch(f -> f.taskKey().equals(t.key()))) {
+                    found.add(new SourceSession(t.title().strip(), t.key(), repoOf(t.key())));
+                }
+                if (found.size() == 3) {
+                    break;
+                }
+            }
+            if (!found.isEmpty()) {
+                jdbc.sql("UPDATE agent_insight SET sessions = ? WHERE id = ?").params(sessionsJson(found), r.id).update();
+                n++;
+            }
+        }
+        return n;
+    }
+
+    private static String sessionsJson(List<SourceSession> sessions) {
+        if (sessions == null || sessions.isEmpty()) {
+            return null;
+        }
+        try {
+            return MAPPER.writeValueAsString(sessions);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static List<SourceSession> readSessions(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return List.of(MAPPER.readValue(json, SourceSession[].class));
+        } catch (IOException e) {
+            return List.of();
+        }
     }
 
     // ───────── 내부 ─────────
@@ -515,13 +616,14 @@ public class ObserverService {
         String createdAt, weekKey, source, title, problem, metric, scope, target, snippet, status, adoptedAt, appliedPath;
         Double baseline, result;
         String baselineFrom, baselineTo, resultFrom, resultTo, verdict, closedAt, note, tier, tierReason, effect;
+        List<SourceSession> sessions = List.of();
     }
 
     private List<InsightRow> insightRows() {
         return jdbc.sql("""
                 SELECT id, created_at, week_key, source, title, problem, metric, scope, target, snippet, status, adopted_at,
                        applied_path, baseline, baseline_from, baseline_to, result, result_from, result_to, verdict, closed_at, note,
-                       tier, tier_reason, effect
+                       tier, tier_reason, effect, sessions
                 FROM agent_insight
                 ORDER BY CASE status WHEN 'adopted' THEN 0 WHEN 'proposed' THEN 1 WHEN 'done' THEN 2 ELSE 3 END, id DESC
                 """).query((rs, i) -> {
@@ -551,6 +653,7 @@ public class ObserverService {
             r.tier = rs.getString(23);
             r.tierReason = rs.getString(24);
             r.effect = rs.getString(25);
+            r.sessions = readSessions(rs.getString(26));
             return r;
         }).list();
     }

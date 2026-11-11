@@ -127,6 +127,7 @@ export const api = {
   deleteInsight: (id: number) => request<void>(`/observer/insights/${id}`, { method: 'DELETE' }),
   adoptMustInsights: () => request<{ adopted: number }>('/observer/insights/adopt-must?write=true', { method: 'POST' }),
   reclassifyInsights: () => request<JobView>('/observer/insights/reclassify', { method: 'POST' }),
+  linkInsightSessions: () => request<{ linked: number }>('/observer/insights/link-sessions', { method: 'POST' }),
   adoptInsight: (id: number, write: boolean) => request<Insight>(`/observer/insights/${id}/adopt?write=${write}`, { method: 'POST' }),
   writeInsight: (id: number) => request<void>(`/observer/insights/${id}/write`, { method: 'POST' }),
   revertInsight: (id: number) => request<void>(`/observer/insights/${id}/revert`, { method: 'POST' }),

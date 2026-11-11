@@ -1247,3 +1247,5 @@ a.tg-title:hover { color: var(--accent); }
 .ob-more > summary::-webkit-details-marker { display: none; }
 .ob-more[open] > summary svg { transform: rotate(90deg); }
 .ob-more[open] > summary { margin-bottom: 10px; }
+.ob-src a { color: var(--text-muted); text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 2px; }
+.ob-src a:hover { color: var(--text); }

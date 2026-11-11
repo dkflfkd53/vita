@@ -613,6 +613,24 @@ function InsightSection({ week, defs, insights, loading }: { week: string; defs:
   )
 }
 
+/** 발생 세션 — 이 제안의 근거가 된 세션, 누르면 세션 상세 */
+function SourceSessions({ insight: i }: { insight: Insight }) {
+  if (i.sessions.length === 0) return null
+  return (
+    <span className="ob-src">
+      발생 세션:{' '}
+      {i.sessions.map((s, k) => (
+        <span key={s.taskKey}>
+          {k > 0 && ', '}
+          <Link to={`/sessions/${s.taskKey}`} title={s.repo ? `${s.repo} 저장소` : undefined}>
+            {s.title}
+          </Link>
+        </span>
+      ))}
+    </span>
+  )
+}
+
 const VERDICT_TONE: Record<string, string> = { 개선: 'good', 악화: 'bad', '변화 없음': 'flat', '측정 중': 'wait' }
 
 const TIERS: { key: InsightTier; name: string; tip: string }[] = [
@@ -728,6 +746,7 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
         <div className="ob-ins-why subtle">
           {i.effect && <span>예상: {i.effect}</span>}
           {i.tierReason && <span>근거: {i.tierReason}</span>}
+          <SourceSessions insight={i} />
         </div>
         {err && <div className="ob-error">{err.message}</div>}
         {confirm === 'write' ? (
@@ -802,6 +821,11 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
         <InlineText multiline className="ob-ins-problem" value={i.problem ?? ''} placeholder="근거 — 어떤 숫자를 보고 이렇게 바꾸나" onSave={(v) => patch.mutate({ problem: v })} />
       ) : (
         i.problem && <p className="ob-ins-problem">{i.problem}</p>
+      )}
+      {i.sessions.length > 0 && (
+        <div className="ob-ins-why subtle">
+          <SourceSessions insight={i} />
+        </div>
       )}
 
       <div className="ob-ins-fields">

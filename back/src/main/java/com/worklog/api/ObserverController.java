@@ -87,6 +87,12 @@ public class ObserverController {
         return Map.of("adopted", service.adoptMust(write));
     }
 
+    /** 발생 세션이 빈 예전 제안에 근거 문장 속 세션 제목으로 세션을 붙인다 */
+    @PostMapping("/insights/link-sessions")
+    public Map<String, Integer> linkSessions() {
+        return Map.of("linked", service.linkSessions());
+    }
+
     /** 묶여 있는 제안을 규칙 하나씩으로 나누고 단계 다시 매기기 */
     @PostMapping("/insights/reclassify")
     public JobView reclassify() {

@@ -28,6 +28,8 @@ public class SchemaUpgrades {
         addColumn("agent_insight", "tier", "TEXT");
         addColumn("agent_insight", "tier_reason", "TEXT");
         addColumn("agent_insight", "effect", "TEXT");
+        // 이 제안의 근거가 된 세션들(JSON [{title, taskKey, repo}])
+        addColumn("agent_insight", "sessions", "TEXT");
         // 1 = 카테고리 통째로 숨김(보드·세션·리포트·AI 사용에서 빠짐, 기록은 남음)
         addColumn("category", "hidden", "INTEGER NOT NULL DEFAULT 0");
         addColumn("work_item", "subtype", "TEXT");

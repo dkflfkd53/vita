@@ -571,6 +571,8 @@ export interface Insight {
   tierReason: string | null
   /** 넣으면 무엇이 얼마나 줄지 한 줄 */
   effect: string | null
+  /** 이 제안의 근거가 된 세션(누르면 세션 상세) */
+  sessions: { title: string; taskKey: string; repo: string | null }[]
 }
 
 export type InsightTier = 'must' | 'recommend' | 'optional'
