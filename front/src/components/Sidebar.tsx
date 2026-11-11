@@ -9,7 +9,17 @@ import { Icon } from './Icon'
 import { VitaWordmark } from './VitaLogo'
 import { StatusDot } from './common'
 
-export function Sidebar() {
+const NAV: { to: string; end?: boolean; icon: 'check' | 'calendar' | 'report' | 'activity' | 'settings'; label: string }[] = [
+  { to: '/', end: true, icon: 'check', label: '업무' },
+  { to: '/sessions', icon: 'calendar', label: '세션' },
+  { to: '/report', icon: 'report', label: '리포트' },
+  { to: '/ai', icon: 'activity', label: 'AI 사용' },
+  { to: '/settings', icon: 'settings', label: '설정' },
+]
+
+const TOGGLE_KEY = navigator.platform.toLowerCase().includes('mac') ? '⌘\\' : 'Ctrl+\\'
+
+export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const { data } = useOverview()
   const { data: jobs } = useJobs()
   const qc = useQueryClient()
@@ -32,6 +42,34 @@ export function Sidebar() {
   const live = data?.live ?? []
   const busy = live.filter((l) => l.status === 'busy').length
 
+  // 접힌 사이드바 = 아이콘만 있는 좁은 막대
+  if (collapsed) {
+    return (
+      <aside className="sidebar collapsed">
+        <button className="side-toggle" onClick={onToggle} title={`사이드바 펴기 (${TOGGLE_KEY})`} aria-label="사이드바 펴기">
+          <Icon name="right" size={15} />
+        </button>
+        <nav className="nav">
+          {NAV.map((n) => (
+            <NavLink key={n.to} to={n.to} end={n.end} title={n.label} aria-label={n.label}>
+              <Icon name={n.icon} />
+            </NavLink>
+          ))}
+        </nav>
+        <button className="side-rail-live" onClick={onToggle} title={`실행 중인 세션 ${live.length}개${busy > 0 ? ` · ${busy}개 작업 중` : ''} — 누르면 펼쳐서 보기`}>
+          <StatusDot variant={busy > 0 ? 'busy' : 'live'} />
+          <span className="num">{live.length}</span>
+        </button>
+        <div style={{ flex: 1 }} />
+        {running && (
+          <div className="side-rail-job" title={running.message ?? running.label}>
+            <div className="spinner" />
+          </div>
+        )}
+      </aside>
+    )
+  }
+
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -39,24 +77,17 @@ export function Sidebar() {
           <VitaWordmark height={22} />
         </Link>
         <small>에이전트 세션 기반 업무 관리</small>
+        <button className="side-toggle" onClick={onToggle} title={`사이드바 접기 (${TOGGLE_KEY})`} aria-label="사이드바 접기">
+          <Icon name="left" size={15} />
+        </button>
       </div>
 
       <nav className="nav">
-        <NavLink to="/" end>
-          <Icon name="check" /> 업무
-        </NavLink>
-        <NavLink to="/sessions">
-          <Icon name="calendar" /> 세션
-        </NavLink>
-        <NavLink to="/report">
-          <Icon name="report" /> 리포트
-        </NavLink>
-        <NavLink to="/ai">
-          <Icon name="activity" /> AI 사용
-        </NavLink>
-        <NavLink to="/settings">
-          <Icon name="settings" /> 설정
-        </NavLink>
+        {NAV.map((n) => (
+          <NavLink key={n.to} to={n.to} end={n.end}>
+            <Icon name={n.icon} /> {n.label}
+          </NavLink>
+        ))}
       </nav>
 
       <div className="side-section">

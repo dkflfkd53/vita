@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useState } from 'react'
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { Sidebar } from './components/Sidebar'
 import { CalendarPage } from './pages/CalendarPage'
@@ -12,9 +13,38 @@ import { WorkItemPage } from './pages/WorkItemPage'
 function Layout() {
   // 카테고리 색을 먼저 읽어 둔다(읽히면 화면이 다시 그려진다)
   useSettings()
+  // 사이드바 접기 — 이 브라우저에만 기억(저장 못 해도 펼친 채로 동작)
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('vita.sidebar') === 'collapsed'
+    } catch {
+      return false
+    }
+  })
+  const toggle = useCallback(() => {
+    setCollapsed((v) => {
+      try {
+        localStorage.setItem('vita.sidebar', v ? 'open' : 'collapsed')
+      } catch {
+        /* 저장 못 해도 이번엔 바뀐다 */
+      }
+      return !v
+    })
+  }, [])
+  // ⌘\ (윈도우는 Ctrl+\) 로도 접고 편다
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
+        e.preventDefault()
+        toggle()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [toggle])
   return (
-    <div className="app">
-      <Sidebar />
+    <div className={`app${collapsed ? ' side-collapsed' : ''}`}>
+      <Sidebar collapsed={collapsed} onToggle={toggle} />
       <main className="main">
         <Outlet />
       </main>
