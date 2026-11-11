@@ -33,6 +33,15 @@ class RecommendTargetTest {
     }
 
     @Test
+    void 저장소_메모리가_없으면_작업_폴더_메모리() {
+        // 저장소 여러 개를 담은 작업 폴더에서 연 세션 — 메모리는 그 폴더 것
+        Map<String, Target> targets = Map.of("global", TARGETS.get("global"),
+                "memory:~/work", new Target("memory:~/work", "work 메모리 (작업 폴더)", "~/m/work", true, "memory"));
+        assertThat(ObserverService.recommendTarget("global", List.of(s("work"), s("work")), targets, x -> "memory:~/work"))
+                .isEqualTo("memory:~/work");
+    }
+
+    @Test
     void 세션을_모르면_고른_대로() {
         assertThat(ObserverService.recommendTarget("memory:web", List.of(), TARGETS)).isEqualTo("memory:web");
         assertThat(ObserverService.recommendTarget("global", List.of(s("other")), TARGETS)).isEqualTo("global");

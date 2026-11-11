@@ -33,7 +33,9 @@ public class AgentStore {
             switch (it) {
                 case ToolStart s -> jdbc.sql("""
                         INSERT INTO agent_tool_call (tool_use_id, session_id, day, started_at, tool, target, sidechain)
-                        VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(tool_use_id) DO NOTHING
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(tool_use_id) DO UPDATE SET target = excluded.target
+                        WHERE agent_tool_call.target IS NULL AND excluded.target IS NOT NULL
                         """).params(s.id(), s.sessionId(), LocalDate.ofInstant(s.at(), zone).toString(), s.at().toString(),
                         s.tool(), s.target(), s.sidechain() ? 1 : 0).update();
                 // 시작 줄이 없는 결과(다른 파일에 있던 호출)는 버린다

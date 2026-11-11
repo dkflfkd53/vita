@@ -112,7 +112,7 @@ public final class AgentParser {
     /** 무엇에 대한 호출인지 한 줄 — Bash 는 명령 첫 줄, 파일 도구는 경로 */
     public static String target(String tool, JsonNode in) {
         String v = switch (tool) {
-            case "Bash" -> in.path("command").asText(null);
+            case "Bash", "PowerShell" -> in.path("command").asText(null);
             case "Read", "Write", "Edit", "NotebookEdit" -> in.path("file_path").asText(in.path("notebook_path").asText(null));
             case "Grep", "Glob" -> in.path("pattern").asText(null);
             case "Agent", "Task" -> in.path("description").asText(in.path("subagent_type").asText(null));
@@ -125,7 +125,7 @@ public final class AgentParser {
             return null;
         }
         String t = v.strip();
-        if ("Bash".equals(tool)) {
+        if ("Bash".equals(tool) || "PowerShell".equals(tool)) {
             // 여러 줄 명령은 줄을 ⏎ 로 이어 앞부분을 남긴다 — 묶음 이름(signature)을 뒷줄 명령에서 찾을 수 있게
             return cut(t.replaceAll("[ \\t]*\\n[ \\t]*", " ⏎ "), BASH_MAX);
         }

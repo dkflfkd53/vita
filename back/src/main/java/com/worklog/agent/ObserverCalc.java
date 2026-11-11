@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.regex.MatchResult;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -55,8 +56,8 @@ public class ObserverCalc {
     private static final Set<String> INSTANT = Set.of("Read", "Write", "Edit", "NotebookEdit", "Grep", "Glob", "LS",
             "ToolSearch", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet", "TodoWrite", "Skill",
             "apply_patch"); // Codex 파일 수정
-    /** 셸 명령 도구 — Claude Code 의 Bash, Codex 의 exec_command */
-    private static final Set<String> SHELL = Set.of("Bash", "exec_command");
+    /** 셸 명령 도구 — Claude Code 의 Bash·PowerShell(Windows), Codex 의 exec_command */
+    private static final Set<String> SHELL = Set.of("Bash", "PowerShell", "exec_command");
     private static final long INSTANT_GRACE_MS = 2_000;
     /** 사용자에게 묻고 답을 기다리는 도구 — 걸린 시간 전체가 질문 응답 대기 */
     private static final Set<String> ASK = Set.of("AskUserQuestion", "ExitPlanMode", "EnterPlanMode", "request_user_input_async");
@@ -218,7 +219,7 @@ public class ObserverCalc {
                 subCost += c;
             }
         }
-        long editedFiles = d.edits().stream().map(e -> e.sessionId() + "|" + e.path()).distinct().count();
+        long editedFiles = d.edits().stream().map(e -> e.sessionId() + "|" + PathText.key(e.path())).distinct().count();
         Set<String> sessions = new HashSet<>();
         d.days().stream().filter(x -> x.activeSec() > 0).forEach(x -> sessions.add(x.sessionId()));
 
@@ -333,13 +334,16 @@ public class ObserverCalc {
             "launchctl", "openssl", "kubectl", "rsync", "make");
     private static final Set<String> SKIP = Set.of("cd", "export", "set", "source", "echo", "printf", "fi", "done", "EOF", "}", ")");
     /** 줄 앞에 붙는 셸 문법 — 건너뛰고 뒤 명령을 본다 */
-    private static final Set<String> PREFIX = Set.of("do", "then", "else", "{", "(", "time", "nohup", "!");
+    private static final Set<String> PREFIX = Set.of("do", "then", "else", "{", "(", "time", "nohup", "!", "&");
+    /** 명령 자리 낱말 — "C:/Program Files/…/x.exe" 처럼 따옴표로 감싼 경로는 한 낱말 */
+    private static final Pattern WORD = Pattern.compile("\"[^\"]*\"|\\S+");
+    private static final Pattern WIN_EXEC = Pattern.compile("(?i)\\.(exe|cmd|bat|ps1|com)$");
 
     static String signature(String command) {
         String[] segments = command.replace(" …", "").split("\\s*(?:&&|\\|\\||;|\\||⏎)\\s*");
         String fallback = null;
         for (String seg : segments) {
-            String[] w = seg.strip().split("\\s+");
+            String[] w = WORD.matcher(seg.strip()).results().map(MatchResult::group).toArray(String[]::new);
             int k = 0;
             while (k < w.length && (w[k].matches("[A-Za-z_][A-Za-z0-9_]*=.*") || PREFIX.contains(w[k]))) {
                 k++; // FOO=bar 명령, do 명령 → 명령
@@ -347,7 +351,7 @@ public class ObserverCalc {
             if (k >= w.length || w[k].isEmpty() || SKIP.contains(w[k]) || w[k].startsWith("#") || w[k].startsWith("'")) {
                 continue;
             }
-            String head = w[k].startsWith("/") || w[k].startsWith("~") ? w[k].substring(w[k].lastIndexOf('/') + 1) : w[k];
+            String head = commandName(w[k]);
             String sig = head;
             if (k + 1 < w.length && w[k + 1].matches("[A-Za-z][\\w:.-]*") && !head.equals("sleep")) {
                 sig = head + " " + w[k + 1];
@@ -360,6 +364,25 @@ public class ObserverCalc {
             }
         }
         return fallback == null ? "(cd·export 만)" : fallback;
+    }
+
+    /**
+     * 명령 자리 낱말 → 명령 이름. 절대 경로(/usr/bin/x, ~/x, C:\…\x.exe, git bash /c/…)면 마지막 이름만,
+     * ./x · .\x.bat 는 ./x 로. Windows 실행 확장자(.exe·.cmd·.bat·.ps1)는 뗀다 — python.exe 도 python 으로 묶이게
+     */
+    static String commandName(String word) {
+        String w = word.length() > 1 && word.startsWith("\"") && word.endsWith("\"") ? word.substring(1, word.length() - 1) : word;
+        boolean relative = w.startsWith("./") || w.startsWith(".\\");
+        boolean absolute = w.startsWith("/") || w.startsWith("~") || w.startsWith("\\")
+                || (w.length() > 2 && Character.isLetter(w.charAt(0)) && w.charAt(1) == ':' && PathText.isSep(w.charAt(2)));
+        if (!relative && !absolute) {
+            return w.equals(word) ? WIN_EXEC.matcher(w).replaceFirst("") : word;
+        }
+        String name = WIN_EXEC.matcher(PathText.baseName(w)).replaceFirst("");
+        if (relative) {
+            return w.indexOf('/', 2) < 0 && w.indexOf('\\', 2) < 0 ? "./" + name : w;
+        }
+        return name;
     }
 
     public List<ErrorSample> errors(Data d, int limit) {
@@ -401,7 +424,7 @@ public class ObserverCalc {
     }
 
     public List<ReworkFile> rework(Data d, int minEdits, int limit) {
-        Map<String, List<EditRow>> by = d.edits().stream().collect(Collectors.groupingBy(e -> e.sessionId() + "|" + e.path()));
+        Map<String, List<EditRow>> by = d.edits().stream().collect(Collectors.groupingBy(e -> e.sessionId() + "|" + PathText.key(e.path())));
         return by.values().stream().filter(l -> l.size() >= minEdits).map(l -> {
             EditRow e = l.get(0);
             SessionRow s = d.sessions().get(e.sessionId());
@@ -409,11 +432,14 @@ public class ObserverCalc {
         }).sorted(Comparator.comparingInt(ReworkFile::edits).reversed()).limit(limit).toList();
     }
 
-    private static String shortPath(String path) {
-        String home = System.getProperty("user.home");
-        String p = path.startsWith(home) ? "~" + path.substring(home.length()) : path;
-        return p.replaceFirst("^~/\\.claude/projects/[^/]+/memory/", "메모리/")
-                .replaceFirst("^/private/tmp/claude-\\d+/[^/]+/[^/]+/scratchpad/", "scratchpad/");
+    /** 메모리 문서·scratchpad 는 앞 경로를 줄인다. scratchpad 는 macOS /private/tmp/claude-501/…, Windows %TEMP%\claude\… */
+    private static final Pattern MEMORY_PREFIX = Pattern.compile("^~[/\\\\]\\.claude[/\\\\]projects[/\\\\][^/\\\\]+[/\\\\]memory[/\\\\]");
+    private static final Pattern SCRATCH_PREFIX = Pattern.compile(
+            "^(?:.*[/\\\\])?claude(?:-\\d+)?[/\\\\][^/\\\\]+[/\\\\][^/\\\\]+[/\\\\]scratchpad[/\\\\]");
+
+    static String shortPath(String path) {
+        String p = MEMORY_PREFIX.matcher(PathText.tilde(path)).replaceFirst("메모리/");
+        return SCRATCH_PREFIX.matcher(p).replaceFirst("scratchpad/");
     }
 
     public List<SessionStat> sessions(Data d, int limit) {
