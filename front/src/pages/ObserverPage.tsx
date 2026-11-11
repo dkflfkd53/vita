@@ -25,16 +25,22 @@ export function ObserverPage() {
   const kind: PeriodKind = params.get('p') === 'month' || params.get('p') === 'year' ? (params.get('p') as PeriodKind) : 'week'
   const key = params.get('key') ?? (kind === 'week' ? params.get('week') : null) ?? periodKeyOf(kind)
   const scope = params.get('scope')
-  const go = (next: { kind?: PeriodKind; key?: string; scope?: string | null }) => {
+  // 탭 = 사용량(기본) · 작업 패턴 · 개선 — 주소에 남겨 다시 들어와도 그 탭
+  const tab: Tab = params.get('tab') === 'pattern' || params.get('tab') === 'improve' ? (params.get('tab') as Tab) : 'usage'
+  const go = (next: { kind?: PeriodKind; key?: string; scope?: string | null; tab?: Tab }) => {
     const k = next.kind ?? kind
     const p: Record<string, string> = { key: next.key ?? (next.kind && next.kind !== kind ? periodKeyOf(k) : key) }
     if (k !== 'week') p.p = k
     const sc = next.scope === undefined ? scope : next.scope
     if (sc) p.scope = sc
+    const t = next.tab ?? tab
+    if (t !== 'usage') p.tab = t
     setParams(p, { replace: true })
   }
   const { data, isLoading, error } = useQuery({ queryKey: ['observer', kind, key, scope], queryFn: () => api.observer(kind, key, scope) })
   const insights = useQuery({ queryKey: ['insights'], queryFn: () => api.insights() })
+  const mustPending = (insights.data ?? []).filter((i) => i.status === 'proposed' && i.tier === 'must').length
+  const proposed = (insights.data ?? []).filter((i) => i.status === 'proposed').length
 
   const scopes = useScopes()
   const scopeSwitch = scopes.length > 0 && (
@@ -48,6 +54,18 @@ export function ObserverPage() {
   )
   const body = (
     <>
+      <div className="page-tabs" role="tablist" aria-label="AI 사용 보기">
+        {TABS.map((t) => (
+          <button key={t.key} role="tab" aria-selected={tab === t.key} className={tab === t.key ? 'on' : ''} onClick={() => go({ tab: t.key })} title={t.tip}>
+            {t.name}
+            {t.key === 'improve' && proposed > 0 && (
+              <span className={`tab-badge${mustPending > 0 ? ' must' : ''}`} title={mustPending > 0 ? `처리 안 한 필수 제안 ${mustPending}개` : `제안 ${proposed}개`}>
+                {mustPending > 0 ? mustPending : proposed}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
       <div className="cal-toolbar">
         <div className="nav-btns">
           <div className="segmented" role="tablist" aria-label="기간 단위">
@@ -70,13 +88,13 @@ export function ObserverPage() {
             </button>
           )}
         </div>
-        <ProposeButton kind={kind} periodKey={key} scope={scope} />
+        {tab === 'improve' && <ProposeButton kind={kind} periodKey={key} scope={scope} />}
       </div>
 
-      <UsageOverviewSection kind={kind} periodKey={key} scope={scope} />
-      {error && <ErrorBox error={error} />}
-      {isLoading && <Loading />}
-      {data && (
+      {tab === 'usage' && <UsageOverviewSection kind={kind} periodKey={key} scope={scope} />}
+      {tab !== 'usage' && error && <ErrorBox error={error} />}
+      {tab !== 'usage' && isLoading && <Loading />}
+      {tab === 'pattern' && data && (
         <div className="ob">
           {data.current.counts.toolCalls === 0 && (
             <div className="ob-note">
@@ -84,20 +102,32 @@ export function ObserverPage() {
               {data.coverageFrom && ` 원본 세션 파일이 남아 있던 기간(${data.coverageFrom}~)만 볼 수 있어요.`}
             </div>
           )}
+          <Highlights observer={data} />
           <MetricCards observer={data} insights={insights.data ?? []} />
           <TimeSplit b={data.current.breakdown} observer={data} />
-          <div className="ob-two">
-            <SlowCommands observer={data} />
-            <ToolTable observer={data} />
-          </div>
-          <div className="ob-two">
-            <Errors observer={data} />
-            <Corrections observer={data} />
-          </div>
-          <div className="ob-two">
-            <CostlySessions observer={data} />
-            <Rework observer={data} />
-          </div>
+          <details className="ob-more">
+            <summary>
+              <Icon name="chevron" size={12} /> 자세한 표 — 오래 걸린 명령·도구·실패·정정 요청·비싼 세션·여러 번 고친 파일
+            </summary>
+            <div className="ob">
+              <div className="ob-two">
+                <SlowCommands observer={data} />
+                <ToolTable observer={data} />
+              </div>
+              <div className="ob-two">
+                <Errors observer={data} />
+                <Corrections observer={data} />
+              </div>
+              <div className="ob-two">
+                <CostlySessions observer={data} />
+                <Rework observer={data} />
+              </div>
+            </div>
+          </details>
+        </div>
+      )}
+      {tab === 'improve' && data && (
+        <div className="ob">
           <InsightSection week={key} defs={data.metricDefs} insights={insights.data} loading={insights.isLoading} />
         </div>
       )}
@@ -114,6 +144,54 @@ export function ObserverPage() {
       </div>
       {body}
     </div>
+  )
+}
+
+type Tab = 'usage' | 'pattern' | 'improve'
+
+const TABS: { key: Tab; name: string; tip: string }[] = [
+  { key: 'usage', name: '사용량', tip: '크레딧·토큰을 모델별로 얼마나 썼나' },
+  { key: 'pattern', name: '작업 패턴', tip: '시간이 어디서 새나 — 지표·시간 분해·병목' },
+  { key: 'improve', name: '개선', tip: '개선 제안 → md 에 도입 → 도입 전후 비교' },
+]
+
+/** 이번 기간에 눈에 띄는 것 — 지난 기간보다 10% 넘게 나빠진 지표 먼저, 모자라면 좋아진 것, 최대 3개 */
+function Highlights({ observer }: { observer: Observer }) {
+  const rows = observer.metricDefs
+    .filter((d) => d.lowerIsBetter)
+    .map((d) => {
+      const cur = observer.current.metrics[d.key]
+      const prev = observer.previous.metrics[d.key]
+      const change = cur != null && prev != null && prev !== 0 ? (cur - prev) / Math.abs(prev) : null
+      return { d, cur, prev, change }
+    })
+    .filter((r) => r.change != null && Math.abs(r.change) >= 0.1)
+  const worse = rows.filter((r) => r.change! > 0).sort((a, b) => b.change! - a.change!)
+  const better = rows.filter((r) => r.change! < 0).sort((a, b) => a.change! - b.change!)
+  const top = [...worse, ...better].slice(0, 3)
+  return (
+    <section className="card ob-card ob-highlights">
+      <div className="ob-head">
+        <h3>{observer.label} 눈에 띄는 것</h3>
+        <span className="subtle">{PREV_PERIOD[observer.kind]}보다 10% 넘게 달라진 지표</span>
+      </div>
+      {top.length === 0 ? (
+        <p className="subtle ob-empty">{PREV_PERIOD[observer.kind]}와 비교해 크게 달라진 지표가 없어요.</p>
+      ) : (
+        <ul className="ob-hl">
+          {top.map(({ d, cur, prev, change }) => (
+            <li key={d.key} className={change! > 0 ? 'bad' : 'good'} title={d.description}>
+              <b>{change! > 0 ? '나빠짐' : '좋아짐'}</b>
+              <span>{d.label}</span>
+              <span className="num">
+                {fmtMetric(d, prev)} → {fmtMetric(d, cur)} ({change! > 0 ? '+' : ''}
+                {Math.round(change! * 100)}%)
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 
