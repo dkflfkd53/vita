@@ -32,6 +32,8 @@ import type {
   WorkItemSummary,
   WorkText,
   WorkTextPartKey,
+  MetricDef,
+  InsightPending,
 } from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -116,8 +118,10 @@ export const api = {
 
   observer: (kind: PeriodKind, key: string, scope: string | null) =>
     request<Observer>(`/observer/${kind}/${key}${scope ? `?scope=${encodeURIComponent(scope)}` : ''}`),
-  observerPropose: (kind: PeriodKind, key: string, scope: string | null) =>
-    request<JobView>(`/observer/${kind}/${key}/proposals${scope ? `?scope=${encodeURIComponent(scope)}` : ''}`, { method: 'POST' }),
+  metricDefs: () => request<MetricDef[]>('/observer/metric-defs'),
+  insightPending: () => request<InsightPending>('/observer/insights/pending'),
+  scanInsights: () => request<JobView>('/observer/insights/scan', { method: 'POST' }),
+  scanTaskInsights: (taskKey: string) => request<JobView>(`/observer/insights/scan/${encodeURIComponent(taskKey)}`, { method: 'POST' }),
   insightTargets: () => request<InsightTarget[]>('/observer/targets'),
   insights: () => request<Insight[]>('/observer/insights'),
   createInsight: (body: InsightPatch & { title: string }, week: string) =>

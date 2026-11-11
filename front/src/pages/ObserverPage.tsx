@@ -37,7 +37,11 @@ export function ObserverPage() {
     if (t !== 'usage') p.tab = t
     setParams(p, { replace: true })
   }
-  const { data, isLoading, error } = useQuery({ queryKey: ['observer', kind, key, scope], queryFn: () => api.observer(kind, key, scope) })
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['observer', kind, key, scope],
+    queryFn: () => api.observer(kind, key, scope),
+    enabled: tab === 'pattern',
+  })
   const insights = useQuery({ queryKey: ['insights'], queryFn: () => api.insights() })
   const mustPending = (insights.data ?? []).filter((i) => i.status === 'proposed' && i.tier === 'must').length
   const proposed = (insights.data ?? []).filter((i) => i.status === 'proposed').length
@@ -66,6 +70,7 @@ export function ObserverPage() {
           </button>
         ))}
       </div>
+      {tab !== 'improve' && (
       <div className="cal-toolbar">
         <div className="nav-btns">
           <div className="segmented" role="tablist" aria-label="기간 단위">
@@ -88,12 +93,12 @@ export function ObserverPage() {
             </button>
           )}
         </div>
-        {tab === 'improve' && <ProposeButton kind={kind} periodKey={key} scope={scope} />}
       </div>
+      )}
 
       {tab === 'usage' && <UsageOverviewSection kind={kind} periodKey={key} scope={scope} />}
-      {tab !== 'usage' && error && <ErrorBox error={error} />}
-      {tab !== 'usage' && isLoading && <Loading />}
+      {tab === 'pattern' && error && <ErrorBox error={error} />}
+      {tab === 'pattern' && isLoading && <Loading />}
       {tab === 'pattern' && data && (
         <div className="ob">
           {data.current.counts.toolCalls === 0 && (
@@ -126,11 +131,7 @@ export function ObserverPage() {
           </details>
         </div>
       )}
-      {tab === 'improve' && data && (
-        <div className="ob">
-          <InsightSection week={key} defs={data.metricDefs} insights={insights.data} loading={insights.isLoading} />
-        </div>
-      )}
+      {tab === 'improve' && <ImproveTab insights={insights.data} loading={insights.isLoading} />}
     </>
   )
   return (
@@ -140,7 +141,7 @@ export function ObserverPage() {
           <h1>AI 사용</h1>
           <p>Claude Code·Codex 세션이 크레딧·토큰을 모델별로 얼마나 썼는지, 시간이 어디서 새는지 보고, 규칙을 바꾼 뒤 실제로 나아졌는지 기록해요.</p>
         </div>
-        {scopeSwitch}
+        {tab !== 'improve' && scopeSwitch}
       </div>
       {body}
     </div>
@@ -525,28 +526,14 @@ function Rework({ observer }: { observer: Observer }) {
 
 // ───────── 개선 제안 · 도입 · 효과 ─────────
 
-function ProposeButton({ kind, periodKey, scope }: { kind: PeriodKind; periodKey: string; scope: string | null }) {
-  const key = `observer:${kind}:${periodKey}`
-  const running = useRunningJob(key)
-  const last = useLastJob(key)
-  const start = useStartJob(() => api.observerPropose(kind, periodKey, scope))
-  return (
-    <div className="ob-propose">
-      {last?.status === 'FAILED' && !running && <span className="bad" title={last.message ?? ''}>제안 실패</span>}
-      {last?.status === 'DONE' && !running && <span className="subtle">{last.message}</span>}
-      <button className="btn btn-primary btn-sm" onClick={() => start.mutate(undefined)} disabled={!!running || start.isPending}>
-        <Icon name="sparkle" size={13} />
-        {running ? (running.message ?? '제안 만드는 중') : 'AI 개선 제안 받기'}
-      </button>
-    </div>
-  )
-}
+// 개선은 기간이 아니라 세션 단위 — 아직 안 본 세션(이어진 부분 포함)에서 찾고, 단계별로 한 무리씩 본다
 
-const GROUPS: { status: Insight['status']; title: string; tip: string }[] = [
-  { status: 'adopted', title: '측정 중', tip: '도입 직전 14일과 도입 후 14일을 같은 지표로 비교해요' },
-  { status: 'proposed', title: '제안', tip: '문안을 고친 뒤 도입하면 md 에 들어가고 측정이 시작돼요' },
-  { status: 'done', title: '결과 확정', tip: '' },
-  { status: 'rejected', title: '기각', tip: '' },
+type Stage = 'proposed' | 'adopted' | 'done' | 'rejected'
+const STAGES: { key: Stage; name: string; tip: string }[] = [
+  { key: 'proposed', name: '제안', tip: '도입하면 md 에 들어가고 측정이 시작돼요' },
+  { key: 'adopted', name: '측정 중', tip: '도입 직전 14일과 도입 후 14일을 같은 지표로 비교해요' },
+  { key: 'done', name: '효과 확인', tip: '측정이 끝난 규칙 — 효과가 없으면 빼세요' },
+  { key: 'rejected', name: '기각', tip: '' },
 ]
 
 function useInsightMutation<T>(fn: (arg: T) => Promise<unknown>) {
@@ -560,56 +547,167 @@ function useInsightMutation<T>(fn: (arg: T) => Promise<unknown>) {
   })
 }
 
-function InsightSection({ week, defs, insights, loading }: { week: string; defs: MetricDef[]; insights: Insight[] | undefined; loading: boolean }) {
+function ImproveTab({ insights, loading }: { insights: Insight[] | undefined; loading: boolean }) {
+  const [params, setParams] = useSearchParams()
+  const defs = useQuery({ queryKey: ['metric-defs'], queryFn: () => api.metricDefs(), staleTime: Infinity })
   const targets = useQuery({ queryKey: ['insight-targets'], queryFn: () => api.insightTargets() })
-  const create = useInsightMutation(() => api.createInsight({ title: '새 개선안', target: 'global' }, week))
-  const [showRejected, setShowRejected] = useState(false)
+  const create = useInsightMutation(() => api.createInsight({ title: '새 개선안', target: 'global' }, periodKeyOf('week')))
+  const [target, setTarget] = useState<string | null>(null)
   const list = insights ?? []
-  const measured = list.filter((i) => i.status === 'adopted' || i.status === 'done')
-  const count = (v: string) => measured.filter((i) => i.verdict === v).length
+  const count = (st: Stage) => list.filter((i) => i.status === st).length
+  const asked = params.get('st') as Stage | null
+  const stage: Stage = asked && STAGES.some((s) => s.key === asked) ? asked : count('proposed') > 0 || count('adopted') === 0 ? 'proposed' : 'adopted'
+  const setStage = (st: Stage) => {
+    const next = new URLSearchParams(params)
+    next.set('st', st)
+    setParams(next, { replace: true })
+    setTarget(null)
+  }
+  const inStage = list.filter((i) => i.status === stage)
+  const targetKeys = [...new Set(inStage.map((i) => i.target ?? ''))].filter(Boolean)
+  const items = inStage.filter((i) => !target || i.target === target)
+  const tlist = targets.data ?? []
+  const mustLeft = list.filter((i) => i.status === 'proposed' && tierOf(i) === 'must').length
 
   return (
-    <section className="ob-insights">
-      <div className="ob-ins-head">
-        <div>
-          <h2>개선 기록</h2>
-          <p className="subtle">
-            제안 → md 에 도입 → 도입 전후 비교. 도입 {measured.length}건 · 개선 {count('개선')} · 변화 없음 {count('변화 없음')} · 악화{' '}
-            {count('악화')} · 측정 중 {count('측정 중')}
-          </p>
+    <div className="ob">
+      <ScanBar />
+      <div className="ob-stage-bar">
+        <div className="segmented" role="tablist" aria-label="개선 단계">
+          {STAGES.map((st) => {
+            const n = count(st.key)
+            return (
+              <button key={st.key} role="tab" aria-selected={stage === st.key} className={stage === st.key ? 'on' : ''} onClick={() => setStage(st.key)} title={st.tip}>
+                {st.name}
+                <span className={`ob-stage-n${st.key === 'proposed' && mustLeft > 0 ? ' must' : ''}`}>{n}</span>
+              </button>
+            )
+          })}
         </div>
-        <button className="btn btn-sm" onClick={() => create.mutate(undefined)} disabled={create.isPending}>
+        <button className="btn btn-ghost btn-sm" onClick={() => create.mutate(undefined)} disabled={create.isPending}>
           + 직접 추가
         </button>
       </div>
-      {loading && <Loading />}
-      {!loading && list.length === 0 && (
-        <div className="ob-note">아직 제안이 없어요. 위의 ‘AI 개선 제안 받기’로 보고 있는 기간의 기록에서 개선안을 뽑거나, 직접 추가하세요.</div>
+      {targetKeys.length > 1 && (
+        <div className="ob-target-chips">
+          <span className="subtle">넣을 곳</span>
+          {[null, ...targetKeys].map((k) => (
+            <button key={k ?? 'all'} className={`chip${target === k ? ' on' : ''}`} onClick={() => setTarget(k)}>
+              {k ? (tlist.find((t) => t.key === k)?.label ?? k) : '전체'}
+              <span className="count">{k ? inStage.filter((i) => i.target === k).length : inStage.length}</span>
+            </button>
+          ))}
+        </div>
       )}
-      {GROUPS.map((g) => {
-        const items = list.filter((i) => i.status === g.status)
-        if (items.length === 0) return null
-        const hidden = g.status === 'rejected' && !showRejected
-        return (
-          <div key={g.status} className="ob-group">
-            <div className="ob-group-title" title={g.tip}>
-              {g.title} <span className="count">{items.length}</span>
-              {g.status === 'rejected' && (
-                <button className="btn btn-ghost btn-sm" onClick={() => setShowRejected((v) => !v)}>
-                  {showRejected ? '접기' : '펼치기'}
-                </button>
-              )}
-            </div>
-            {!hidden &&
-              (g.status === 'proposed' ? (
-                <ProposedByTier items={items} defs={defs} targets={targets.data ?? []} />
-              ) : (
-                items.map((i) => <InsightCard key={i.id} insight={i} defs={defs} targets={targets.data ?? []} />)
+      {loading && <Loading />}
+      {!loading && items.length === 0 && <div className="ob-note">{EMPTY[stage]}</div>}
+      {items.length > 0 && stage === 'proposed' && <ProposedByTier items={items} defs={defs.data ?? []} targets={tlist} />}
+      {items.length > 0 && stage === 'done' && <DoneByVerdict items={items} defs={defs.data ?? []} targets={tlist} />}
+      {items.length > 0 && (stage === 'adopted' || stage === 'rejected') && (
+        <div className="ob-list">
+          {items.map((i) => (
+            <InsightCard key={i.id} insight={i} defs={defs.data ?? []} targets={tlist} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const EMPTY: Record<Stage, string> = {
+  proposed: '남은 제안이 없어요. 위의 ‘찾기’로 새 세션에서 개선점을 찾거나, 직접 추가하세요.',
+  adopted: '측정 중인 규칙이 없어요. 제안을 도입하면 여기서 도입 전후를 비교해요.',
+  done: '측정이 끝난 규칙이 아직 없어요.',
+  rejected: '기각한 제안이 없어요.',
+}
+
+/** 아직 안 본 세션 — 새 세션과, 봤던 뒤로 내용이 이어진 세션(이어진 부분만 본다) */
+function ScanBar() {
+  const qc = useQueryClient()
+  const pending = useQuery({ queryKey: ['insight-pending'], queryFn: () => api.insightPending(), refetchInterval: 60_000 })
+  const running = useRunningJob('observer:scan')
+  const last = useLastJob('observer:scan')
+  const start = useStartJob(() => api.scanInsights())
+  const doneId = last?.status === 'DONE' ? last.id : null
+  useEffect(() => {
+    if (doneId) {
+      qc.invalidateQueries({ queryKey: ['insights'] })
+      qc.invalidateQueries({ queryKey: ['insight-pending'] })
+    }
+  }, [doneId, qc])
+  const ss = pending.data?.sessions ?? []
+  const rescan = ss.filter((s) => s.rescan).length
+  const signal = ss.filter((s) => s.errors + s.corrections > 0).length
+  return (
+    <div className="ob-scan">
+      <div className="ob-scan-text">
+        <b>{pending.isLoading ? '세션 확인 중' : ss.length > 0 ? `아직 안 본 세션 ${ss.length}개` : '새로 볼 세션이 없어요'}</b>
+        <span className="subtle">
+          {ss.length > 0
+            ? [rescan > 0 && `이어진 세션 ${rescan}개는 이어진 부분만`, signal > 0 && `실패·정정이 있었던 세션 ${signal}개`].filter(Boolean).join(' · ')
+            : '세션마다 어디까지 봤는지 남겨서, 새로 생긴 기록만 봐요'}
+        </span>
+        {ss.length > 0 && (
+          <details className="ob-scan-list">
+            <summary>목록</summary>
+            <ul>
+              {ss.map((x) => (
+                <li key={x.sessionId}>
+                  <Link to={`/sessions/${x.taskKey}`}>{x.title}</Link>
+                  {x.rescan && <span className="ob-rescan">이어짐</span>}
+                  <span className="subtle">
+                    요청 {x.prompts}
+                    {x.errors > 0 && ` · 실패 ${x.errors}`}
+                    {x.corrections > 0 && ` · 정정 ${x.corrections}`}
+                  </span>
+                </li>
               ))}
+            </ul>
+          </details>
+        )}
+      </div>
+      <div className="ob-propose">
+        {last?.status === 'FAILED' && !running && <span className="bad" title={last.message ?? ''}>찾기 실패</span>}
+        {last?.status === 'DONE' && !running && <span className="subtle">{last.message}</span>}
+        <button className="btn btn-primary btn-sm" onClick={() => start.mutate(undefined)} disabled={!!running || start.isPending || ss.length === 0}>
+          <Icon name="sparkle" size={13} />
+          {running ? (running.message ?? '찾는 중') : ss.length > 0 ? `${ss.length}개 세션에서 개선점 찾기` : '개선점 찾기'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const VERDICT_ORDER = ['개선', '변화 없음', '악화', '판단 보류', '측정 불가', '참고 지표']
+const VERDICT_NOTE: Record<string, string> = {
+  '변화 없음': '효과가 없으면 ‘규칙 빼기’로 md 에서 빼요',
+  악화: '효과가 없으면 ‘규칙 빼기’로 md 에서 빼요',
+  '판단 보류': '측정 기간에 일한 날이 3일이 안 돼 판단하지 못했어요 — 펼쳐서 ‘다시 측정’',
+}
+/** 숫자로 판정한 결과에만 증감 % 를 붙인다 */
+const SHOW_DELTA = new Set(['개선', '변화 없음', '악화'])
+
+/** 효과 확인 — 좋아진 것 / 그대로 / 나빠진 것으로 묶는다. 효과 없는 묶음엔 빼기 권유 */
+function DoneByVerdict({ items, defs, targets }: { items: Insight[]; defs: MetricDef[]; targets: InsightTarget[] }) {
+  const groups = [...new Set([...VERDICT_ORDER, ...items.map((i) => i.verdict ?? '측정 불가')])]
+  return (
+    <>
+      {groups.map((v) => {
+        const list = items.filter((i) => (i.verdict ?? '측정 불가') === v)
+        if (list.length === 0) return null
+        return (
+          <div key={v} className="ob-tier">
+            <div className="ob-tier-title">
+              {v} <span className="count">{list.length}</span>
+              {VERDICT_NOTE[v] && <span className="subtle">{VERDICT_NOTE[v]}</span>}
+            </div>
+            {list.map((i) => (
+              <InsightCard key={i.id} insight={i} defs={defs} targets={targets} />
+            ))}
           </div>
         )
       })}
-    </section>
+    </>
   )
 }
 
@@ -732,62 +830,91 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
   // 선택 규칙이 측정해 보니 효과가 없으면 빼기를 권한다
   const dropHint = tierOf(i) === 'optional' && (i.status === 'adopted' || i.status === 'done') && (i.verdict === '변화 없음' || i.verdict === '악화')
 
-  // 제안 상태는 짧게 — 단계·제목·규칙 한 줄·예상 효과, 나머지는 '자세히'
-  if (editable && !open) {
+  // 접힌 줄 — 단계·제목·(결과)·넣을 곳·바로 할 일, 규칙 한 줄. 제목을 누르면 펼친다
+  if (!open) {
+    const v = i.verdict ?? '측정 중'
+    const measured = i.status === 'adopted' || i.status === 'done'
+    const canDrop = i.status === 'done' && (v === '변화 없음' || v === '악화')
     return (
       <article className={`ob-ins ${i.status} compact`}>
-        <div className="ob-ins-top">
+        <div className="ob-row">
           <span className={`ob-tier-chip ${tier.key}`} title={i.tierReason ?? tier.tip}>
             {tier.name}
           </span>
-          <h4 className="ob-ins-title">{i.title}</h4>
+          <button className="ob-row-title" onClick={() => setOpen(true)} title="펼쳐서 근거·문안·지표 보기">
+            {i.title}
+          </button>
+          {measured && (
+            <span className={`ob-verdict ob-row-verdict ${VERDICT_TONE[v] ?? 'flat'}`} title={def?.label}>
+              {v}
+              {i.deltaPct != null && SHOW_DELTA.has(v) && ` ${i.deltaPct > 0 ? '+' : ''}${Math.round(i.deltaPct)}%`}
+            </span>
+          )}
+          {i.status === 'adopted' && <span className="ob-row-meta subtle">일한 날 {i.afterDays}일</span>}
+          {target && (
+            <span className="ob-row-meta ob-row-target subtle" title={target.path}>
+              {target.label}
+            </span>
+          )}
+          <div className="ob-row-actions">
+            {i.status === 'proposed' && (
+              <>
+                <button className="btn btn-primary btn-sm" disabled={!i.snippet || !i.target || !i.metric} onClick={() => setConfirm('write')} title={!i.metric ? '펼쳐서 지표를 먼저 고르세요' : ''}>
+                  도입
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => patch.mutate({ status: 'rejected' })}>
+                  기각
+                </button>
+                <select className="ob-tier-select" value={tierOf(i)} onChange={(e) => patch.mutate({ tier: e.target.value as InsightTier })} title="단계 바꾸기">
+                  {TIERS.map((t) => (
+                    <option key={t.key} value={t.key}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+            {i.status === 'rejected' && (
+              <button className="btn btn-ghost btn-sm" onClick={() => patch.mutate({ status: 'proposed' })}>
+                되살리기
+              </button>
+            )}
+            {canDrop && (
+              <button className="btn btn-sm" onClick={() => setConfirm('revert')} title="효과가 없었으니 md 에서 규칙을 빼요">
+                규칙 빼기
+              </button>
+            )}
+            <button className="btn btn-ghost icon-btn btn-sm" onClick={() => setOpen(true)} aria-label="펼치기">
+              <Icon name="chevron" size={12} />
+            </button>
+          </div>
         </div>
-        {i.snippet && <div className="ob-ins-rule">{i.snippet.replace(/^\s*-\s*/, '')}</div>}
-        <div className="ob-ins-why subtle">
-          {i.effect && <span>예상: {i.effect}</span>}
-          {i.tierReason && <span>근거: {i.tierReason}</span>}
-          <SourceSessions insight={i} />
-        </div>
+        {i.snippet && <div className="ob-ins-rule one" title={i.snippet}>{i.snippet.replace(/^\s*-\s*/, '')}</div>}
+        {i.status === 'proposed' && (i.effect || i.sessions.length > 0) && (
+          <div className="ob-ins-why subtle">
+            {i.effect && <span>예상: {i.effect}</span>}
+            <SourceSessions insight={i} />
+          </div>
+        )}
         {err && <div className="ob-error">{err.message}</div>}
-        {confirm === 'write' ? (
+        {confirm && (
           <div className="ob-confirm">
-            <span>{`${target?.path ?? i.target} 에 문안을 넣고 측정을 시작할까요?`}</span>
+            <span>
+              {confirm === 'write' && `${target?.path ?? i.target} 에 문안을 넣고 측정을 시작할까요?`}
+              {confirm === 'revert' && '파일에서 문안을 빼고 제안 상태로 되돌릴까요? 기준값·측정은 지워져요.'}
+            </span>
             <button
-              className="btn btn-primary btn-sm"
+              className={`btn btn-sm${confirm === 'write' ? ' btn-primary' : ''}`}
               onClick={() => {
-                adopt.mutate(true)
+                if (confirm === 'write') adopt.mutate(true)
+                if (confirm === 'revert') revert.mutate(undefined)
                 setConfirm(null)
               }}
             >
-              넣고 도입
+              {confirm === 'write' ? '넣고 도입' : '빼기'}
             </button>
             <button className="btn btn-ghost btn-sm" onClick={() => setConfirm(null)}>
               취소
-            </button>
-          </div>
-        ) : (
-          <div className="ob-ins-actions">
-            <button className="btn btn-primary btn-sm" disabled={!i.snippet || !i.target || !i.metric} onClick={() => setConfirm('write')} title={!i.metric ? '자세히에서 지표를 먼저 고르세요' : ''}>
-              도입
-            </button>
-            {i.status === 'proposed' ? (
-              <button className="btn btn-ghost btn-sm" onClick={() => patch.mutate({ status: 'rejected' })}>
-                기각
-              </button>
-            ) : (
-              <button className="btn btn-ghost btn-sm" onClick={() => patch.mutate({ status: 'proposed' })}>
-                제안으로 되살리기
-              </button>
-            )}
-            <select className="ob-tier-select" value={tierOf(i)} onChange={(e) => patch.mutate({ tier: e.target.value as InsightTier })} title="단계 바꾸기">
-              {TIERS.map((t) => (
-                <option key={t.key} value={t.key}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>
-              자세히
             </button>
           </div>
         )}
@@ -809,11 +936,9 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
           </span>
           {dropHint && <span className="ob-drop-hint">빼기 권유 — 선택 규칙인데 효과가 없어요</span>} #{i.id} · {i.source === 'ai' ? 'AI 제안' : '직접'} ·{' '}
           {fmtDateTime(i.createdAt)}
-          {editable && (
-            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>
-              접기
-            </button>
-          )}
+          <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>
+            접기
+          </button>
         </span>
       </div>
 
@@ -822,8 +947,10 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
       ) : (
         i.problem && <p className="ob-ins-problem">{i.problem}</p>
       )}
-      {i.sessions.length > 0 && (
+      {(i.effect || i.tierReason || i.sessions.length > 0) && (
         <div className="ob-ins-why subtle">
+          {i.effect && <span>예상: {i.effect}</span>}
+          {i.tierReason && <span>단계 이유: {i.tierReason}</span>}
           <SourceSessions insight={i} />
         </div>
       )}

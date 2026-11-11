@@ -230,6 +230,13 @@ CREATE TABLE IF NOT EXISTS agent_insight (
     note          TEXT
 );
 
+-- 개선점 찾기에서 세션을 어디까지 봤는지. 이 시각 뒤에 생긴 기록만 다음에 다시 본다(이어서 쓴 세션 포함)
+CREATE TABLE IF NOT EXISTS insight_scan (
+    session_id    TEXT PRIMARY KEY,
+    scanned_until TEXT NOT NULL,
+    scanned_at    TEXT NOT NULL
+);
+
 -- ───────── 사용자 설정 ─────────
 -- 화면의 설정에서 바꾸는 값(JSON). key = projects | routines | work-text
 CREATE TABLE IF NOT EXISTS setting (

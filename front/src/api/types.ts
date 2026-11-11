@@ -575,6 +575,23 @@ export interface Insight {
   sessions: { title: string; taskKey: string; repo: string | null }[]
 }
 
+/** 아직 개선점을 안 본 세션 — rescan = 예전에 봤는데 내용이 이어진 세션(이어진 부분만 본다) */
+export interface PendingSession {
+  sessionId: string
+  taskKey: string
+  title: string
+  project: string | null
+  lastAt: string | null
+  prompts: number
+  errors: number
+  corrections: number
+  rescan: boolean
+}
+
+export interface InsightPending {
+  sessions: PendingSession[]
+}
+
 export type InsightTier = 'must' | 'recommend' | 'optional'
 
 export interface InsightPatch {

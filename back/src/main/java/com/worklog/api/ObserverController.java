@@ -18,7 +18,9 @@ import org.springframework.web.bind.annotation.RestController;
 import com.worklog.agent.ObserverService;
 import com.worklog.agent.ObserverViews.Insight;
 import com.worklog.agent.ObserverViews.InsightRequest;
+import com.worklog.agent.ObserverViews.MetricDef;
 import com.worklog.agent.ObserverViews.Observer;
+import com.worklog.agent.ObserverViews.Pending;
 import com.worklog.agent.ObserverViews.Target;
 import com.worklog.summary.JobService.JobView;
 
@@ -38,19 +40,32 @@ public class ObserverController {
         return service.observer(kind, key, scope);
     }
 
-    @PostMapping("/{kind:week|month|year}/{key}/proposals")
-    public JobView proposePeriod(@PathVariable String kind, @PathVariable String key, @RequestParam(required = false) String scope) {
-        return service.submitProposals(kind, key, scope).view();
-    }
-
     @GetMapping("/weeks/{week}")
     public Observer week(@PathVariable String week, @RequestParam(required = false) String scope) {
         return service.observer(week, scope);
     }
 
-    @PostMapping("/weeks/{week}/proposals")
-    public JobView propose(@PathVariable String week, @RequestParam(required = false) String scope) {
-        return service.submitProposals(week, scope).view();
+    /** 아직 개선점을 안 본 세션 — 새 세션과, 봤던 뒤로 내용이 이어진 세션 */
+    @GetMapping("/insights/pending")
+    public Pending pending() {
+        return service.pending();
+    }
+
+    /** 새로 볼 세션 전부에서 개선점 찾기 */
+    @PostMapping("/insights/scan")
+    public JobView scan() {
+        return service.submitScan().view();
+    }
+
+    /** 세션 하나(작업 묶음)를 처음부터 다시 보고 개선점 찾기 */
+    @PostMapping("/insights/scan/{taskKey}")
+    public JobView scanTask(@PathVariable String taskKey) {
+        return service.submitScan(taskKey).view();
+    }
+
+    @GetMapping("/metric-defs")
+    public List<MetricDef> metricDefs() {
+        return ObserverService.metricDefs();
     }
 
     @GetMapping("/targets")

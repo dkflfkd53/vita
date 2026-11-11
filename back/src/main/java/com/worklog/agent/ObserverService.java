@@ -28,6 +28,8 @@ import com.worklog.agent.ObserverViews.Insight;
 import com.worklog.agent.ObserverViews.InsightRequest;
 import com.worklog.agent.ObserverViews.MetricDef;
 import com.worklog.agent.ObserverViews.Observer;
+import com.worklog.agent.ObserverViews.Pending;
+import com.worklog.agent.ObserverViews.PendingSession;
 import com.worklog.agent.ObserverViews.Snapshot;
 import com.worklog.agent.ObserverViews.SourceSession;
 import com.worklog.agent.ObserverViews.Target;
@@ -344,28 +346,139 @@ public class ObserverService {
 
     // ───────── AI 제안 ─────────
 
-    public JobService.Job submitProposals(String weekKey, String scope) {
-        return submitProposals("week", weekKey, scope);
+    // 기간이 아니라 세션 단위로 본다: 세션마다 "어디까지 봤는지"를 남기고, 그 뒤에 생긴 기록만 다음에 본다.
+    // 예전에 봤던 세션이 이어지면 이어진 부분만 다시 본다.
+
+    private static final int SCAN_LOOKBACK_DAYS = 30;
+    private static final int BASELINE_DAYS = 28;
+
+    /** 아직 개선점을 안 본 세션(최근 30일, 새로 생긴 부분 기준) */
+    public Pending pending() {
+        LocalDate today = LocalDate.now(props.zone());
+        return new Pending(newParts(calc.load(today.minusDays(SCAN_LOOKBACK_DAYS), today)).sessions());
     }
 
-    /** 기간 키(주·달·해)별로 제안을 남긴다 — agent_insight.week_key 에 그 키 */
-    public JobService.Job submitProposals(String kind, String weekKey, String scope) {
-        Period p = Period.of(kind, weekKey);
-        String sc = normalizeScope(scope);
-        return jobs.submit("observer:" + kind + ":" + weekKey, p.label() + " 에이전트 개선 제안", progress -> {
+    private record NewParts(Data data, List<PendingSession> sessions) {
+    }
+
+    private NewParts newParts(Data all) {
+        Map<String, Instant> marks = scanMarks();
+        Instant floor = scanFloor();
+        Data d = calc.sliceAfter(all, sid -> marks.getOrDefault(sid, floor));
+        Set<String> ids = calc.activeSessions(d);
+        Map<String, Integer> prompts = new HashMap<>();
+        Map<String, Integer> errors = new HashMap<>();
+        Map<String, Integer> corrections = new HashMap<>();
+        d.prompts().forEach(x -> {
+            prompts.merge(x.sessionId(), 1, Integer::sum);
+            if (ObserverCalc.isCorrection(x.text())) {
+                corrections.merge(x.sessionId(), 1, Integer::sum);
+            }
+        });
+        d.tools().stream().filter(c -> "error".equals(c.status())).forEach(c -> errors.merge(c.sessionId(), 1, Integer::sum));
+        List<PendingSession> list = ids.stream().map(id -> {
+            var row = d.sessions().get(id);
+            return new PendingSession(id, d.taskOf().getOrDefault(id, id), row == null ? id : row.displayTitle(),
+                    row == null ? null : row.project(), row == null ? null : row.lastAt(), prompts.getOrDefault(id, 0),
+                    errors.getOrDefault(id, 0), corrections.getOrDefault(id, 0), marks.containsKey(id));
+        }).sorted(Comparator.comparing((PendingSession x) -> x.lastAt() == null ? "" : x.lastAt()).reversed()).toList();
+        Data only = calc.onlySessions(d, ids);
+        return new NewParts(only, list);
+    }
+
+    private Map<String, Instant> scanMarks() {
+        Map<String, Instant> out = new HashMap<>();
+        jdbc.sql("SELECT session_id, scanned_until FROM insight_scan").query((rs, i) -> {
+            Instant at = ObserverCalc.parse(rs.getString(2));
+            if (at != null) {
+                out.put(rs.getString(1), at);
+            }
+            return null;
+        }).list();
+        return out;
+    }
+
+    /** 한 번도 안 본 세션의 기준 — 마지막 AI 제안 시각(그 전 기록은 기간 제안 때 이미 봤다), 없으면 30일 전 */
+    private Instant scanFloor() {
+        Instant limit = Instant.now().minus(java.time.Duration.ofDays(SCAN_LOOKBACK_DAYS));
+        Instant last = jdbc.sql("SELECT MAX(created_at) FROM agent_insight WHERE source = 'ai'").query(String.class).optional()
+                .map(ObserverCalc::parse).orElse(null);
+        return last != null && last.isAfter(limit) ? last : limit;
+    }
+
+    private void markScanned(Set<String> ids, Data d) {
+        String now = Instant.now().toString();
+        for (String id : ids) {
+            var row = d.sessions().get(id);
+            String until = row != null && row.lastAt() != null ? row.lastAt() : now;
+            jdbc.sql("""
+                    INSERT INTO insight_scan (session_id, scanned_until, scanned_at) VALUES (?, ?, ?)
+                    ON CONFLICT(session_id) DO UPDATE SET scanned_until = excluded.scanned_until, scanned_at = excluded.scanned_at
+                    """).params(id, until, now).update();
+        }
+    }
+
+    /** 새로 생긴 세션(이어진 부분 포함) 전부에서 개선점을 찾는다 */
+    public JobService.Job submitScan() {
+        return jobs.submit("observer:scan", "새 세션에서 개선점 찾기", progress -> {
             progress.update("최신 기록 수집 중");
             collector.collectAndWait();
-            Observer o = observer(kind, weekKey, sc);
-            progress.update("Claude 가 개선 제안 작성 중");
-            String out = claude.ask(prompt(o));
-            List<InsightRequest> list = parseProposals(out, o);
-            // 아직 손대지 않은 같은 주 AI 제안은 새 것으로 바꾼다
-            jdbc.sql("DELETE FROM agent_insight WHERE week_key = ? AND source = 'ai' AND status = 'proposed'").param(weekKey).update();
-            for (InsightRequest req : list) {
-                create(req, "ai", weekKey);
+            LocalDate today = LocalDate.now(props.zone());
+            NewParts np = newParts(calc.load(today.minusDays(SCAN_LOOKBACK_DAYS), today));
+            if (np.sessions().isEmpty()) {
+                return "새로 볼 세션이 없어요";
             }
-            return "개선 제안 " + list.size() + "개";
+            long rescan = np.sessions().stream().filter(PendingSession::rescan).count();
+            String label = "새로 볼 세션 " + np.sessions().size() + "개" + (rescan > 0 ? "(이어진 세션 " + rescan + "개는 이어진 부분만)" : "");
+            return scan(label, np.data(), calc.activeSessions(np.data()), progress);
         });
+    }
+
+    /** 세션 하나(작업 묶음)를 처음부터 다시 본다 — 세션 상세의 「이 세션에서 개선점 찾기」 */
+    public JobService.Job submitScan(String taskKey) {
+        return jobs.submit("observer:scan:" + taskKey, "세션 개선점 찾기", progress -> {
+            progress.update("최신 기록 수집 중");
+            collector.collectAndWait();
+            LocalDate today = LocalDate.now(props.zone());
+            Data head = calc.load(today, today);
+            Set<String> ids = new HashSet<>();
+            head.taskOf().forEach((sid, tk) -> {
+                if (taskKey.equals(tk) && head.sessions().containsKey(sid)) {
+                    ids.add(sid);
+                }
+            });
+            if (ids.isEmpty() && head.sessions().containsKey(taskKey)) {
+                ids.add(taskKey);
+            }
+            if (ids.isEmpty()) {
+                throw new IllegalArgumentException("세션을 찾지 못했어요(숨긴 세션은 볼 수 없어요)");
+            }
+            LocalDate from = ids.stream().map(id -> head.sessions().get(id).firstAt()).map(ObserverCalc::parse)
+                    .filter(x -> x != null).map(x -> LocalDate.ofInstant(x, zone())).min(Comparator.naturalOrder()).orElse(today);
+            Data d = calc.onlySessions(calc.load(from, today), ids);
+            String title = head.sessions().get(ids.iterator().next()).displayTitle();
+            return scan("세션 「" + title + "」 전체", d, ids, progress);
+        });
+    }
+
+    private String scan(String label, Data target, Set<String> ids, JobService.Progress progress) throws IOException {
+        LocalDate today = LocalDate.now(props.zone());
+        Data base = calc.slice(calc.load(today.minusDays(BASELINE_DAYS - 1), today), today.minusDays(BASELINE_DAYS - 1), today, null);
+        Observer o = new Observer("scan", today.toString(), label, null, null, null, store.firstDay().orElse(null), metricDefs(),
+                calc.snapshot(target), calc.snapshot(base), calc.tools(target), calc.slowCommands(target, 8), calc.errors(target, 10),
+                calc.corrections(target, 12), calc.rework(target, 4, 8), calc.sessions(target, 12), calc.models(target), List.of());
+        progress.update("Claude 가 세션 " + ids.size() + "개를 보는 중");
+        String out = claude.ask(prompt(o));
+        List<InsightRequest> list = parseProposals(out, o);
+        for (InsightRequest req : list) {
+            create(req, "ai", "scan:" + today);
+        }
+        markScanned(ids, target);
+        return list.isEmpty() ? "세션 " + ids.size() + "개를 봤고 새 제안은 없어요" : "세션 " + ids.size() + "개에서 제안 " + list.size() + "개";
+    }
+
+    private ZoneId zone() {
+        return props.zone() == null ? ZoneId.systemDefault() : props.zone();
     }
 
     private String prompt(Observer o) throws IOException {
@@ -397,20 +510,30 @@ public class ObserverService {
                   "snippet":"- 규칙 문안 1줄"}]
 
                 """.replace("%s", switch (o.kind()) {
+            case "scan" -> "새로 생긴(아직 안 본)";
             case "month" -> "이번 달";
             case "year" -> "올해";
             default -> "이번 주";
         }));
-        sb.append("## 기간\n").append(o.label()).append(o.scope() == null ? "" : " · 범위 " + o.scope()).append("\n\n");
+        sb.append("scan".equals(o.kind()) ? "## 대상\n" : "## 기간\n").append(o.label()).append(o.scope() == null ? "" : " · 범위 " + o.scope()).append("\n\n");
         String[] words = switch (o.kind()) {
+            case "scan" -> new String[] {"이번에 볼 부분", "최근 4주 전체", "-"};
             case "month" -> new String[] {"이번 달", "지난달", "최근 6개월"};
             case "year" -> new String[] {"올해", "작년", "올해 달별"};
             default -> new String[] {"이번 주", "지난주", "최근 8주"};
         };
-        sb.append("## 지표 (").append(words[0]).append(" / ").append(words[1]).append(" / ").append(words[2]).append(" 평균)\n");
+        sb.append("## 지표 (").append(words[0]).append(" / ").append(words[1])
+                .append("scan".equals(o.kind()) ? "" : " / " + words[2] + " 평균").append(")\n");
         for (MetricDef m : o.metricDefs()) {
             Double avg = o.trend().stream().map(t -> t.metrics().get(m.key())).filter(v -> v != null)
                     .mapToDouble(Double::doubleValue).average().stream().boxed().findFirst().orElse(null);
+            if ("scan".equals(o.kind())) {
+                sb.append("- ").append(m.key()).append(" (").append(m.label()).append(", ").append(m.unit())
+                        .append(m.lowerIsBetter() ? ", 낮을수록 좋음" : ", 참고").append("): ")
+                        .append(fmt(o.current().metrics().get(m.key()))).append(" / ").append(fmt(o.previous().metrics().get(m.key())))
+                        .append(" — ").append(m.description()).append('\n');
+                continue;
+            }
             sb.append("- ").append(m.key()).append(" (").append(m.label()).append(", ").append(m.unit())
                     .append(m.lowerIsBetter() ? ", 낮을수록 좋음" : ", 참고").append("): ")
                     .append(fmt(o.current().metrics().get(m.key()))).append(" / ").append(fmt(o.previous().metrics().get(m.key())))
@@ -436,7 +559,8 @@ public class ObserverService {
         o.corrections().forEach(pr -> sb.append("- [").append(pr.sessionTitle()).append("] ").append(pr.text()).append('\n'));
         sb.append("\n## 여러 번 고친 파일 (수정 횟수)\n");
         o.rework().forEach(r -> sb.append("- ").append(r.path()).append(" ×").append(r.edits()).append('\n'));
-        sb.append("\n## 비용 큰 세션 (작업 분 · $ · 압축 · 실패 · 정정 · 가장 긴 턴 분)\n");
+        sb.append("scan".equals(o.kind()) ? "\n## 이번에 보는 세션" : "\n## 비용 큰 세션")
+                .append(" (작업 분 · $ · 압축 · 실패 · 정정 · 가장 긴 턴 분)\n");
         o.sessions().forEach(s -> sb.append("- [").append(s.project()).append("] ").append(s.title()).append(" · ")
                 .append(s.activeSec() / 60).append(" · ").append(String.format(Locale.ROOT, "%.0f", s.costUsd())).append(" · ")
                 .append(s.compactions()).append(" · ").append(s.errors()).append(" · ").append(s.corrections()).append(" · ")

@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -108,6 +109,57 @@ public class ObserverCalc {
                 d.tools().stream().filter(x -> inDay.test(x.day()) && inScope.test(x.sessionId())).toList(),
                 d.events().stream().filter(x -> inDay.test(x.day()) && inScope.test(x.sessionId())).toList(),
                 d.usage().stream().filter(x -> inDay.test(x.day()) && inScope.test(x.sessionId())).toList());
+    }
+
+    /**
+     * 세션마다 정한 시각(mark) 뒤에 생긴 기록만. 시각이 있는 기록(요청·수정·도구·이벤트)은 시각으로,
+     * 날짜만 있는 기록(작업 시간·토큰)은 그날 마지막 활동이 mark 뒤인 날만 남긴다
+     */
+    public Data sliceAfter(Data d, Function<String, Instant> markOf) {
+        Map<String, String> markDay = new HashMap<>();
+        Predicate<String[]> after = sa -> {
+            Instant at = parse(sa[1]);
+            return at != null && at.isAfter(markOf.apply(sa[0]));
+        };
+        List<SessionDayRow> days = d.days().stream().filter(x -> after.test(new String[] {x.sessionId(), x.lastAt()})).toList();
+        days.forEach(x -> markDay.merge(x.sessionId(), x.day(), (a, b) -> a.compareTo(b) <= 0 ? a : b));
+        return new Data(d.sessions(), d.taskOf(), days,
+                d.prompts().stream().filter(x -> after.test(new String[] {x.sessionId(), x.at()})).toList(),
+                d.edits().stream().filter(x -> after.test(new String[] {x.sessionId(), x.at()})).toList(),
+                d.tools().stream().filter(x -> after.test(new String[] {x.sessionId(), x.startedAt()})).toList(),
+                d.events().stream().filter(x -> after.test(new String[] {x.sessionId(), x.at()})).toList(),
+                d.usage().stream().filter(x -> markDay.containsKey(x.sessionId()) && x.day().compareTo(markDay.get(x.sessionId())) >= 0).toList());
+    }
+
+    /** 고른 세션들의 기록만 */
+    public Data onlySessions(Data d, Set<String> ids) {
+        return new Data(d.sessions(), d.taskOf(),
+                d.days().stream().filter(x -> ids.contains(x.sessionId())).toList(),
+                d.prompts().stream().filter(x -> ids.contains(x.sessionId())).toList(),
+                d.edits().stream().filter(x -> ids.contains(x.sessionId())).toList(),
+                d.tools().stream().filter(x -> ids.contains(x.sessionId())).toList(),
+                d.events().stream().filter(x -> ids.contains(x.sessionId())).toList(),
+                d.usage().stream().filter(x -> ids.contains(x.sessionId())).toList());
+    }
+
+    /** 기록이 남은 세션(요청·도구·작업 시간 중 하나라도) */
+    public Set<String> activeSessions(Data d) {
+        Set<String> ids = new HashSet<>();
+        d.prompts().forEach(x -> ids.add(x.sessionId()));
+        d.tools().forEach(x -> ids.add(x.sessionId()));
+        d.days().stream().filter(x -> x.activeSec() > 0).forEach(x -> ids.add(x.sessionId()));
+        return ids;
+    }
+
+    static Instant parse(String iso) {
+        if (iso == null) {
+            return null;
+        }
+        try {
+            return Instant.parse(iso);
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     public Snapshot snapshot(Data d) {

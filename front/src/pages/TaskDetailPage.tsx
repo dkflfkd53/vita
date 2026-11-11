@@ -1,21 +1,31 @@
-import { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useTask } from '../api/hooks'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useLastJob, useRunningJob, useStartJob, useTask } from '../api/hooks'
 import { api } from '../api/client'
 import type { SessionInfo } from '../api/types'
 import { Icon } from '../components/Icon'
 import { ErrorBox, Loading, ProjectLabel, PromptText, StatusLabel } from '../components/common'
 import { UsageCompact } from '../components/UsageBreakdown'
-import { fmtDateTime, fmtDayLong, fmtDuration, fmtShort, fmtTime, fmtUsd } from '../lib/format'
+import { addDays, fmtDateTime, fmtDayLong, fmtDuration, fmtShort, fmtTime, fmtUsd, weekKey, weekLabel, weekMonday, ymd } from '../lib/format'
 
 export function TaskDetailPage() {
   const { key = '' } = useParams()
   const { data, isLoading, error } = useTask(key)
+  // 주 사용량 — 캘린더에서 들어오면 보던 주(?week=), 아니면 이번 주
+  const [params] = useSearchParams()
+  const thisWeek = weekKey(new Date())
+  const shownWeek = params.get('week') ?? thisWeek
 
   if (isLoading) return <div className="page"><Loading /></div>
   if (error || !data) return <div className="page"><ErrorBox error={error ?? '작업을 찾을 수 없어요'} /></div>
   const t = data.summary
+  const wFrom = ymd(weekMonday(shownWeek))
+  const wTo = ymd(addDays(weekMonday(shownWeek), 6))
+  const inWeek = data.days.filter((d) => d.day >= wFrom && d.day <= wTo)
+  const weekCost = inWeek.reduce((s, d) => s + d.costUsd, 0)
+  const weekSec = inWeek.reduce((s, d) => s + d.activeSec, 0)
+  const weekName = shownWeek === thisWeek ? '이번 주' : weekLabel(shownWeek)
 
   return (
     <div className="page">
@@ -43,7 +53,7 @@ export function TaskDetailPage() {
 
       {data.hidden && <HiddenNotice sessionId={data.sessions[0]?.id} />}
 
-      <div className="stat-row five">
+      <div className="stat-row six">
         <div className="stat">
           <b>{fmtShort(t.activeSec)}</b>
           <span>작업 시간</span>
@@ -62,7 +72,11 @@ export function TaskDetailPage() {
         </div>
         <div className="stat" title="토큰 사용량을 API 단가로 환산한 추정치">
           <b>{fmtUsd(t.costUsd)}</b>
-          <span>사용량(API 환산)</span>
+          <span>누적 사용량(API 환산)</span>
+        </div>
+        <div className="stat" title={`${wFrom} ~ ${wTo} · 작업 ${fmtShort(weekSec)}`}>
+          <b>{fmtUsd(weekCost)}</b>
+          <span>{weekName} 사용량</span>
         </div>
       </div>
 
@@ -125,6 +139,8 @@ export function TaskDetailPage() {
             </div>
           )}
 
+          {!data.hidden && <SessionInsights taskKey={key} />}
+
           <div className="card">
             <div className="card-head">
               <h3>최근 요청</h3>
@@ -149,6 +165,52 @@ export function TaskDetailPage() {
 }
 
 /** 숨긴 세션 상세 머리 — 합계에서 빠져 있다는 안내와 다시 보이기 */
+/** 이 세션에서 나온 개선 제안 + 세션 전체를 다시 보고 개선점 찾기 */
+function SessionInsights({ taskKey }: { taskKey: string }) {
+  const qc = useQueryClient()
+  const insights = useQuery({ queryKey: ['insights'], queryFn: () => api.insights() })
+  const jobKey = `observer:scan:${taskKey}`
+  const running = useRunningJob(jobKey)
+  const last = useLastJob(jobKey)
+  const start = useStartJob(() => api.scanTaskInsights(taskKey))
+  const doneId = last?.status === 'DONE' ? last.id : null
+  useEffect(() => {
+    if (doneId) {
+      qc.invalidateQueries({ queryKey: ['insights'] })
+      qc.invalidateQueries({ queryKey: ['insight-pending'] })
+    }
+  }, [doneId, qc])
+  const mine = (insights.data ?? []).filter((i) => i.sessions.some((s) => s.taskKey === taskKey) && i.status !== 'rejected')
+  const STATUS: Record<string, string> = { proposed: '제안', adopted: '측정 중', done: '효과 확인' }
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h3>개선 제안 {mine.length > 0 && mine.length}</h3>
+        <button className="btn btn-sm" onClick={() => start.mutate(undefined)} disabled={!!running || start.isPending} title="이 세션을 처음부터 다시 보고, 실패·정정·되돌림에서 규칙으로 막을 만한 걸 찾아요">
+          <Icon name="sparkle" size={13} />
+          {running ? (running.message ?? '찾는 중') : '이 세션에서 개선점 찾기'}
+        </button>
+      </div>
+      <div className="card-body" style={{ paddingTop: 6 }}>
+        {!running && last?.status === 'DONE' && <p className="subtle" style={{ fontSize: 12, margin: '0 0 6px' }}>{last.message}</p>}
+        {!running && last?.status === 'FAILED' && <p className="bad" style={{ fontSize: 12, margin: '0 0 6px' }}>{last.message}</p>}
+        {mine.length === 0 ? (
+          <p className="subtle" style={{ fontSize: 12.5, margin: 0 }}>이 세션에서 나온 제안이 없어요.</p>
+        ) : (
+          <ul className="sess-insights">
+            {mine.map((i) => (
+              <li key={i.id}>
+                <span className="subtle">{STATUS[i.status] ?? i.status}</span>
+                <Link to={`/ai?tab=improve&st=${i.status}`}>{i.title}</Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function HiddenNotice({ sessionId }: { sessionId: string | undefined }) {
   const qc = useQueryClient()
   const navigate = useNavigate()

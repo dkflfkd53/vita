@@ -73,6 +73,14 @@ public final class ObserverViews {
     }
 
     /** 제안의 근거가 된 세션 — taskKey 로 세션 상세에 간다, repo = 그 세션의 저장소(넣을 곳 추천에 씀) */
+    /** 아직 개선점을 안 본 세션 — rescan = 예전에 봤는데 그 뒤 내용이 이어진 세션. errors·corrections 는 새로 생긴 부분만 */
+    public record PendingSession(String sessionId, String taskKey, String title, String project, String lastAt,
+                                 int prompts, int errors, int corrections, boolean rescan) {
+    }
+
+    public record Pending(List<PendingSession> sessions) {
+    }
+
     public record SourceSession(String title, String taskKey, String repo) {
     }
 

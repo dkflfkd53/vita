@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { CalendarDay } from '../api/types'
 import { hiddenPerDay, layoutWeek, type Segment } from '../lib/calendarLayout'
-import { addDays, fmtDuration, fmtShort, fmtUsd, itemColor, parseYmd, ymd } from '../lib/format'
+import { addDays, fmtDuration, fmtShort, fmtUsd, itemColor, parseYmd, weekKey, ymd } from '../lib/format'
 import { Icon } from './Icon'
 
 // 캘린더 칸·막대(세션 화면)
@@ -57,11 +57,17 @@ function SegmentBar({ seg, row, compact }: { seg: Segment; row: number; compact?
       title={tip}
       onClick={(e) => {
         e.stopPropagation()
-        navigate(`/sessions/${seg.taskKey}`)
+        // 상세에서 이 주 사용량을 보여 주려고 보던 주를 넘긴다
+        navigate(`/sessions/${seg.taskKey}${seg.perDay[0] ? `?week=${weekKey(parseYmd(seg.perDay[0].day))}` : ''}`)
       }}
     >
       <span className="seg-title">{seg.title}</span>
-      {(!compact || span > 1) && <span className="seg-h">{fmtShort(seg.activeSec)}</span>}
+      {(!compact || span > 1) && (
+        <span className="seg-h">
+          {fmtShort(seg.activeSec)}
+          {!compact && seg.costUsd > 0 && ` · ${fmtUsd(seg.costUsd)}`}
+        </span>
+      )}
     </button>
   )
 }
