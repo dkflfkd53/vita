@@ -149,8 +149,8 @@ function ReportActions({ report }: { report: ReportView }) {
           {running ? '작성 중' : report.content ? '다시 작성' : 'AI 리포트 작성'}
         </button>
       </div>
-      {running?.message && <span className="subtle" style={{ fontSize: 12 }}>{running.message}</span>}
-      {start.isError && <span className="bad" style={{ fontSize: 12 }}>{(start.error as Error).message}</span>}
+      {running?.message && <span className="subtle" style={{ fontSize: 13 }}>{running.message}</span>}
+      {start.isError && <span className="bad" style={{ fontSize: 13 }}>{(start.error as Error).message}</span>}
       {exported && (
         <div className="callout" style={{ maxWidth: 560 }}>
           <Icon name="terminal" size={16} />
@@ -243,7 +243,7 @@ function ReportBody({ report }: { report: ReportView }) {
                 <div className="prose">
                   <Markdown remarkPlugins={[remarkGfm]}>{report.content}</Markdown>
                 </div>
-                <p className="subtle" style={{ fontSize: 12, marginTop: 28 }}>
+                <p className="subtle" style={{ fontSize: 13, marginTop: 28 }}>
                   {fmtDateTime(report.generatedAt)} {report.edited ? '직접 고침' : '작성'} · 작업 시간은 세션 활동 기준 추정치예요
                 </p>
               </>
@@ -336,18 +336,18 @@ function ReportBody({ report }: { report: ReportView }) {
             </div>
             <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {s.tasks.slice(0, 12).map((t) => (
-                <Link key={t.taskKey} to={`/sessions/${t.taskKey}`} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                <Link key={t.taskKey} to={`/sessions/${t.taskKey}`} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5 }}>
                   <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
                   <ProjectLabel project={t.project} />
-                  <span className="subtle num" style={{ fontSize: 12, width: 40, textAlign: 'right' }}>
+                  <span className="subtle num" style={{ fontSize: 13, width: 40, textAlign: 'right' }}>
                     {fmtShort(t.activeSec)}
                   </span>
-                  <span className="subtle num" style={{ fontSize: 12, width: 48, textAlign: 'right' }}>
+                  <span className="subtle num" style={{ fontSize: 13, width: 48, textAlign: 'right' }}>
                     {fmtUsd(t.costUsd)}
                   </span>
                 </Link>
               ))}
-              {s.tasks.length > 12 && <span className="subtle" style={{ fontSize: 12 }}>외 {s.tasks.length - 12}개</span>}
+              {s.tasks.length > 12 && <span className="subtle" style={{ fontSize: 13 }}>외 {s.tasks.length - 12}개</span>}
             </div>
           </div>
         </div>

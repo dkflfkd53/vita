@@ -140,7 +140,7 @@ function TaskRow({ t }: { t: TaskSummary }) {
           ))}
           <ToolBadge tools={t.tools} />
           {t.sessionCount > 1 && (
-            <span className="subtle" style={{ fontSize: 12, fontWeight: 400 }}>
+            <span className="subtle" style={{ fontSize: 13, fontWeight: 400 }}>
               세션 {t.sessionCount}
             </span>
           )}

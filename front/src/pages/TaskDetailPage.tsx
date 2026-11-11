@@ -121,7 +121,7 @@ export function TaskDetailPage() {
               {data.sessions.map((s) => (
                 <SessionRow key={s.id} session={s} />
               ))}
-              <p className="subtle" style={{ fontSize: 12, margin: '10px 0 0' }}>
+              <p className="subtle" style={{ fontSize: 13, margin: '10px 0 0' }}>
                 이름을 다른 작업과 똑같이 바꾸면 그 작업으로 합쳐져요.
               </p>
             </div>
@@ -192,10 +192,10 @@ function SessionInsights({ taskKey }: { taskKey: string }) {
         </button>
       </div>
       <div className="card-body" style={{ paddingTop: 6 }}>
-        {!running && last?.status === 'DONE' && <p className="subtle" style={{ fontSize: 12, margin: '0 0 6px' }}>{last.message}</p>}
-        {!running && last?.status === 'FAILED' && <p className="bad" style={{ fontSize: 12, margin: '0 0 6px' }}>{last.message}</p>}
+        {!running && last?.status === 'DONE' && <p className="subtle" style={{ fontSize: 13, margin: '0 0 6px' }}>{last.message}</p>}
+        {!running && last?.status === 'FAILED' && <p className="bad" style={{ fontSize: 13, margin: '0 0 6px' }}>{last.message}</p>}
         {mine.length === 0 ? (
-          <p className="subtle" style={{ fontSize: 12.5, margin: 0 }}>이 세션에서 나온 제안이 없어요.</p>
+          <p className="subtle" style={{ fontSize: 13, margin: 0 }}>이 세션에서 나온 제안이 없어요.</p>
         ) : (
           <ul className="sess-insights">
             {mine.map((i) => (

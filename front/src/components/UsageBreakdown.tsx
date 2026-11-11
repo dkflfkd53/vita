@@ -26,7 +26,7 @@ const fmtRate = (v: number) => `$${v < 1 ? v.toFixed(2) : v % 1 === 0 ? v.toFixe
 /** 좁은 자리(리포트 옆 칸)용 — 모델·토큰 합계·금액만, 누르면 종류별 계산식 */
 export function UsageCompact({ models }: { models: ModelUsage[] }) {
   const [open, setOpen] = useState<string | null>(null)
-  if (models.length === 0) return <p className="subtle" style={{ fontSize: 12.5, margin: 0 }}>이 기간 사용량이 없어요.</p>
+  if (models.length === 0) return <p className="subtle" style={{ fontSize: 13, margin: 0 }}>이 기간 사용량이 없어요.</p>
   return (
     <div className="uc">
       {models.map((m) => {
@@ -64,7 +64,7 @@ export function UsageCompact({ models }: { models: ModelUsage[] }) {
 /** 모델별 토큰·단가·금액 표. 줄을 누르면 계산식 */
 export function UsageTable({ models }: { models: ModelUsage[] }) {
   const [open, setOpen] = useState<string | null>(null)
-  if (models.length === 0) return <p className="subtle" style={{ fontSize: 12.5, margin: 0 }}>이 기간 사용량이 없어요.</p>
+  if (models.length === 0) return <p className="subtle" style={{ fontSize: 13, margin: 0 }}>이 기간 사용량이 없어요.</p>
   const sum = models.reduce(
     (t, m) => ({
       responses: t.responses + m.usage.responses,
@@ -184,7 +184,7 @@ export function UsageDialog({ from, to, title, onClose }: { from: string; to: st
           <div>
             <h2 style={{ margin: 0, fontSize: 16 }}>{title} 사용량</h2>
             {data && (
-              <p className="subtle" style={{ margin: '4px 0 0', fontSize: 12.5 }}>
+              <p className="subtle" style={{ margin: '4px 0 0', fontSize: 13 }}>
                 토큰 <b className="num" title={exact(totalTokens(data.total))}>{fmtTokens(totalTokens(data.total))}</b> · 응답{' '}
                 {data.total.responses.toLocaleString()}회 · API 환산 <b className="num">{fmtUsd(data.total.costUsd)}</b>
               </p>
