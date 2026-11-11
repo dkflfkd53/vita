@@ -1499,7 +1499,27 @@ a.ob-line-cell:hover b { text-decoration: underline; }
 .ob-line-chev svg { transition: transform 0.15s; }
 .ob-line-chev.open svg { transform: rotate(90deg); }
 /* 펼친 상세의 글은 한 줄을 짧게 — 눈이 좌우로 덜 오가게 */
-.ob-ins-detail > * { max-width: 760px; }
-.ob-ins-detail .ob-ins-top { max-width: none; }
 .ob-how ul, .ob-score-how { max-width: 760px; }
 .ob-scan-text { max-width: 760px; }
+/* 펼친 상세 — 왼쪽 규칙·왜, 오른쪽 설정 목록. 폭을 다 채워 오른쪽이 비지 않게 */
+.ob-detail { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr); gap: 10px 28px; padding: 4px 10px 12px; }
+.ob-detail-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ob-detail-k { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; color: var(--text-subtle); margin-top: 4px; }
+.ob-detail-rule { font-size: 14px; line-height: 1.6; padding: 8px 12px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border-muted); white-space: pre-wrap; }
+.ob-detail-why { margin: 0; font-size: 13.5px; line-height: 1.65; color: var(--text-muted); }
+.ob-clamp { position: relative; }
+.ob-clamp:not(.more) > :first-child { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ob-clamp-btn { border: 0; background: none; padding: 2px 0; font: inherit; font-size: 12.5px; color: var(--link); cursor: pointer; }
+.ob-detail-side { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 7px 10px; margin: 4px 0 0; font-size: 13px; align-content: start; }
+.ob-detail-side dt { color: var(--text-subtle); padding-top: 4px; }
+.ob-detail-side dd { margin: 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ob-detail-side select { height: 28px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; font-size: 13px; padding: 0 6px; max-width: 100%; }
+.ob-detail-side select:disabled { background: transparent; border-color: transparent; color: var(--text); padding-left: 0; appearance: none; }
+.ob-detail-note { font-size: 12px; color: var(--text-subtle); }
+.ob-detail-signals { font-family: var(--mono); font-size: 12.5px; }
+.ob-detail-links { flex-direction: row !important; flex-wrap: wrap; gap: 4px 10px !important; }
+.ob-detail-links a { color: var(--link); }
+.ob-detail-wide { grid-column: 1 / -1; }
+.ob-detail-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.ob-detail-actions:empty { display: none; }
+@media (max-width: 900px) { .ob-detail { grid-template-columns: 1fr; } }

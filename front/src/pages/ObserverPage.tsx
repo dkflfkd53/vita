@@ -7,7 +7,7 @@ import type { DietItem, Insight, Outcome, InsightPatch, InsightTarget, InsightTi
 import { Icon } from '../components/Icon'
 import { ErrorBox, Loading, ProjectLabel } from '../components/common'
 import { UsageOverviewSection } from '../components/UsageOverview'
-import { PERIOD_NAME, PREV_PERIOD, THIS_PERIOD, fmtDateTime, fmtDuration, fmtShort, fmtUsd, parseYmd, periodKeyOf } from '../lib/format'
+import { PERIOD_NAME, PREV_PERIOD, THIS_PERIOD, fmtDateTime, fmtDuration, fmtShort, fmtUsd, periodKeyOf } from '../lib/format'
 
 // 에이전트 옵저버 — Claude 세션이 시간·토큰을 어디에 쓰는지(지표·병목) 보고,
 // 개선 규칙을 md 에 넣은 뒤 그 지표가 실제로 좋아졌는지(도입 전 14일 ↔ 도입 후 14일) 기록한다
@@ -1278,24 +1278,6 @@ function DoneByVerdict({ items, defs, targets }: { items: Insight[]; defs: Metri
   )
 }
 
-/** 발생 세션 — 이 제안의 근거가 된 세션, 누르면 세션 상세 */
-function SourceSessions({ insight: i }: { insight: Insight }) {
-  if (i.sessions.length === 0) return null
-  return (
-    <span className="ob-src">
-      발생 세션:{' '}
-      {i.sessions.map((s, k) => (
-        <span key={s.taskKey}>
-          {k > 0 && ', '}
-          <Link to={`/sessions/${s.taskKey}`} title={s.repo ? `${s.repo} 저장소` : undefined}>
-            {s.title}
-          </Link>
-        </span>
-      ))}
-    </span>
-  )
-}
-
 const VERDICT_TONE: Record<string, string> = { 개선: 'good', 악화: 'bad', '변화 없음': 'flat', '측정 중': 'wait' }
 
 const TIERS: { key: InsightTier; name: string; tip: string }[] = [
@@ -1498,239 +1480,204 @@ function InsightCard({ insight: i, defs, targets }: { insight: Insight; defs: Me
     )
   }
 
+  // 펼친 상세 — 왼쪽: 넣을 규칙·왜, 오른쪽: 설정 목록, 아래: 줄에 없는 버튼만
+  const effectLine =
+    (i.status === 'adopted' || i.status === 'done') && i.metric
+      ? `${fmtMetric(def, i.baseline)} → ${fmtMetric(def, i.after)} · ${i.verdict ?? '측정 중'}`
+      : null
   return (
     <article className={`ob-ins ${i.status} compact open${focused ? ' focus' : ''}`} ref={cardRef}>
       {line}
-      <div className="ob-ins-detail">
-      <div className="ob-ins-top">
-        {editable ? (
-          <InlineText className="ob-ins-title" value={i.title} onSave={(t) => t && patch.mutate({ title: t })} />
-        ) : (
-          <span />
-        )}
-        <span className="ob-ins-meta subtle">
-          <span className={`ob-tier-chip ${tier.key}`} title={i.tierReason ?? tier.tip}>
-            {tier.name}
-          </span>
-          {dropHint && <span className="ob-drop-hint">빼기 권유 — 선택 규칙인데 효과가 없어요</span>} #{i.id} · {i.source === 'ai' ? 'AI 제안' : '직접'} ·{' '}
-          {fmtDateTime(i.createdAt)}
-        </span>
-      </div>
-
-      {editable ? (
-        <InlineText multiline className="ob-ins-problem" value={i.problem ?? ''} placeholder="근거 — 어떤 숫자를 보고 이렇게 바꾸나" onSave={(v) => patch.mutate({ problem: v })} />
-      ) : (
-        i.problem && <p className="ob-ins-problem">{i.problem}</p>
-      )}
-      {(i.effect || i.tierReason || i.sessions.length > 0) && (
-        <div className="ob-ins-why subtle">
-          {i.effect && <span>예상: {i.effect}</span>}
-          {i.tierReason && <span>단계 이유: {i.tierReason}</span>}
-          <SourceSessions insight={i} />
-        </div>
-      )}
-
-      <div className="ob-ins-fields">
-        <label>
-          지표
-          <select value={i.metric ?? ''} disabled={!editable} onChange={(e) => patch.mutate({ metric: e.target.value })}>
-            <option value="">— 고르세요</option>
-            {defs.map((d) => (
-              <option key={d.key} value={d.key}>
-                {d.label} {d.lowerIsBetter ? '' : '(참고)'}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          범위
-          <select value={i.scope ?? 'all'} disabled={!editable} onChange={(e) => patch.mutate({ scope: e.target.value })}>
-            <option value="all">전체</option>
-            {scopes.map((sc) => (
-              <option key={sc} value={sc}>
-                {sc}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="grow">
-          넣을 곳
-          <select value={i.target ?? ''} disabled={!editable} onChange={(e) => patch.mutate({ target: e.target.value })}>
-            {!i.target && <option value="">— 고르세요</option>}
-            {targets.map((t) => (
-              <option key={t.key} value={t.key}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <div className="ob-signals">
-        <span className="subtle" title="같은 실수가 다시 나면 도구 명령·오류 문구·정정 요청에 글자 그대로 나올 문자열 — 도입 효과에서 재발 횟수를 셀 때 써요. 쉼표로 나눠요">
-          재발 신호
-        </span>
-        <InlineText
-          className="ob-signals-input"
-          value={i.signals.join(', ')}
-          placeholder="예: sleep 600, push origin HEAD:main"
-          onSave={(v) => {
-            patch.mutate({ signals: v.split(',').map((x) => x.trim()).filter(Boolean) })
-            qc.invalidateQueries({ queryKey: ['outcomes'] })
-          }}
-        />
-      </div>
-
-      <div className="ob-snippet">
-        <div className="ob-snippet-head">
-          <span>md 에 넣을 문안</span>
-          {i.status !== 'proposed' && i.status !== 'rejected' && (
-            <span className={i.applied ? 'good' : 'warn'}>
-              {i.applied ? '✓ 파일에 들어 있음' : i.appliedPath ? '⚠ 파일에서 사라짐' : '기록만 (직접 넣음)'}
-            </span>
-          )}
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => {
-              navigator.clipboard?.writeText(i.snippet ?? '')
-              setCopied(true)
-              window.setTimeout(() => setCopied(false), 1200)
-            }}
-          >
-            <Icon name={copied ? 'check' : 'copy'} size={12} /> {copied ? '복사됨' : '복사'}
-          </button>
-        </div>
-        {editable ? (
-          <InlineText multiline mono className="ob-snippet-body" value={i.snippet ?? ''} placeholder="- Claude 에게 줄 규칙 (마크다운 불릿)" onSave={(v) => patch.mutate({ snippet: v })} />
-        ) : (
-          <pre className="ob-snippet-body">{i.snippet}</pre>
-        )}
-        {target && (
-          <div className="ob-snippet-path subtle">
-            {target.kind === 'memory' ? `${target.path}/ 에 feedback 파일 + MEMORY.md 한 줄` : `${target.path}${target.exists ? '' : ' (새 파일)'} 끝에 덧붙임`}
-            {' · '}
-            {target.kind === 'memory'
-              ? `색인 한 줄 약 ${tok(i.load.always)}은 매 세션, 본문 약 ${tok(i.load.onDemand)}은 관련 있을 때만 읽혀요`
-              : `매 세션 약 ${tok(i.load.always)} 더 읽혀요`}
+      <div className="ob-detail">
+        <div className="ob-detail-main">
+          <div className="ob-detail-k">
+            넣을 규칙
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                navigator.clipboard?.writeText(i.snippet ?? '')
+                setCopied(true)
+                window.setTimeout(() => setCopied(false), 1200)
+              }}
+            >
+              <Icon name={copied ? 'check' : 'copy'} size={12} /> {copied ? '복사됨' : '복사'}
+            </button>
           </div>
-        )}
-      </div>
-
-      {(i.status === 'adopted' || i.status === 'done') && <Effect insight={i} def={def} />}
-
-      {err && <div className="ob-error">{err.message}</div>}
-
-      {confirm ? (
-        <div className="ob-confirm">
-          <span>
-            {confirm === 'write' && `${target?.path ?? i.target} 에 넣고 측정을 시작할까요? ${loadNote}`}
-            {confirm === 'revert' && `파일에서 문안을 빼고 제안 상태로 되돌릴까요? 매 세션 약 ${tok(i.load.always)} 줄어요. 기준값·측정은 지워져요.`}
-            {confirm === 'delete' && '이 제안을 지울까요?'}
-          </span>
-          <button
-            className={`btn btn-sm ${confirm === 'write' ? 'btn-primary' : ''}`}
-            onClick={() => {
-              if (confirm === 'write') adopt.mutate(true)
-              if (confirm === 'revert') revert.mutate(undefined)
-              if (confirm === 'delete') remove.mutate(undefined)
-              setConfirm(null)
-            }}
-          >
-            {confirm === 'write' ? '넣고 도입' : confirm === 'revert' ? '되돌리기' : '지우기'}
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setConfirm(null)}>
-            취소
-          </button>
+          {editable ? (
+            <InlineText multiline className="ob-detail-rule" value={i.snippet ?? ''} placeholder="- Claude 에게 줄 규칙 한 줄" onSave={(t) => patch.mutate({ snippet: t })} />
+          ) : (
+            <div className="ob-detail-rule">{i.snippet}</div>
+          )}
+          <div className="ob-detail-k">왜</div>
+          <Clamp>
+            {editable ? (
+              <InlineText multiline className="ob-detail-why" value={i.problem ?? ''} placeholder="근거 — 어떤 숫자를 보고 이렇게 바꾸나" onSave={(t) => patch.mutate({ problem: t })} />
+            ) : (
+              <p className="ob-detail-why">{i.problem}</p>
+            )}
+          </Clamp>
         </div>
-      ) : (
-        <div className="ob-ins-actions">
-          {editable && (
+        <dl className="ob-detail-side">
+          <dt>넣을 곳</dt>
+          <dd>
+            <select value={i.target ?? ''} disabled={!editable} onChange={(e) => patch.mutate({ target: e.target.value })}>
+              {!i.target && <option value="">— 고르세요</option>}
+              {targets.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {shortTarget(t.label)}
+                </option>
+              ))}
+            </select>
+          </dd>
+          <dt>효과 지표</dt>
+          <dd>
+            <select value={i.metric ?? ''} disabled={!editable} onChange={(e) => patch.mutate({ metric: e.target.value })}>
+              <option value="">— 고르세요</option>
+              {defs.map((d) => (
+                <option key={d.key} value={d.key}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+            {effectLine && <span className="ob-detail-note">{effectLine}</span>}
+          </dd>
+          <dt>범위</dt>
+          <dd>
+            <select value={i.scope ?? 'all'} disabled={!editable} onChange={(e) => patch.mutate({ scope: e.target.value })}>
+              <option value="all">전체</option>
+              {scopes.map((sc) => (
+                <option key={sc} value={sc}>
+                  {sc}
+                </option>
+              ))}
+            </select>
+          </dd>
+          <dt>단계</dt>
+          <dd>
+            <select value={tierOf(i)} disabled={!editable} onChange={(e) => patch.mutate({ tier: e.target.value as InsightTier })} title={i.tierReason ?? tier.tip}>
+              {TIERS.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            {dropHint && <span className="ob-detail-note bad">효과 없음 — 빼기 권유</span>}
+          </dd>
+          <dt title="같은 실수가 다시 나면 오류·정정 요청에 나올 말(cmd: 는 명령 실행 자체). 쉼표로 나눠요">재발 신호</dt>
+          <dd>
+            <InlineText
+              multiline
+              className="ob-detail-signals"
+              value={i.signals.join(', ')}
+              placeholder="예: No such file, cmd:sleep 600"
+              onSave={(t) => {
+                patch.mutate({ signals: t.split(',').map((x) => x.trim()).filter(Boolean) })
+                qc.invalidateQueries({ queryKey: ['outcomes'] })
+              }}
+            />
+          </dd>
+          {i.sessions.length > 0 && (
             <>
-              <button className="btn btn-primary btn-sm" disabled={!i.snippet || !i.target || !i.metric} onClick={() => setConfirm('write')} title={!i.metric ? '지표를 먼저 고르세요' : ''}>
-                md 에 넣고 도입
-              </button>
-              <button className="btn btn-sm" disabled={!i.metric} onClick={() => adopt.mutate(false)} title="이미 손으로 넣었을 때 — 파일은 건드리지 않고 측정만 시작">
-                직접 넣었음
-              </button>
-              {i.status === 'proposed' ? (
-                <button className="btn btn-ghost btn-sm" onClick={() => patch.mutate({ status: 'rejected' })}>
-                  기각
-                </button>
-              ) : (
-                <button className="btn btn-ghost btn-sm" onClick={() => patch.mutate({ status: 'proposed' })}>
-                  제안으로 되살리기
-                </button>
-              )}
-              <button className="btn btn-ghost btn-sm" onClick={() => setConfirm('delete')}>
-                삭제
-              </button>
+              <dt>발생 세션</dt>
+              <dd className="ob-detail-links">
+                {i.sessions.map((x) => (
+                  <Link key={x.taskKey} to={`/sessions/${x.taskKey}`}>
+                    {x.title}
+                  </Link>
+                ))}
+              </dd>
             </>
           )}
-          {i.status === 'adopted' && (
-            <>
-              <button className="btn btn-sm" onClick={() => close.mutate(undefined)} title="지금 측정값으로 결과를 확정">
-                결과 확정
+          <dt>늘어날 읽기</dt>
+          <dd>
+            매 세션 +{tok(i.load.always)}
+            {i.load.onDemand > 0 && <span className="ob-detail-note">본문 {tok(i.load.onDemand)}은 관련 있을 때만</span>}
+          </dd>
+          <dt>기록</dt>
+          <dd className="ob-detail-note">
+            #{i.id} · {i.source === 'ai' ? 'AI 제안' : '직접'} · {fmtDateTime(i.createdAt)}
+            {i.adoptedAt && ` · 도입 ${fmtDateTime(i.adoptedAt)}`}
+            {i.status !== 'proposed' && i.status !== 'rejected' && (i.applied ? ' · ✓ 파일에 있음' : i.appliedPath ? ' · ⚠ 파일에서 사라짐' : ' · 기록만')}
+          </dd>
+        </dl>
+        {err && <div className="ob-error ob-detail-wide">{err.message}</div>}
+        <div className="ob-detail-actions ob-detail-wide">
+          {confirm ? (
+            <div className="ob-confirm">
+              <span>
+                {confirm === 'write' && `${target?.path ?? i.target} 에 넣고 측정을 시작할까요? ${loadNote}`}
+                {confirm === 'revert' && `파일에서 문안을 빼고 제안 상태로 되돌릴까요? 매 세션 약 ${tok(i.load.always)} 줄어요.`}
+                {confirm === 'delete' && '이 제안을 지울까요?'}
+              </span>
+              <button
+                className={`btn btn-sm${confirm === 'write' ? ' btn-primary' : ''}`}
+                onClick={() => {
+                  if (confirm === 'write') adopt.mutate(true)
+                  if (confirm === 'revert') revert.mutate(undefined)
+                  if (confirm === 'delete') remove.mutate(undefined)
+                  setConfirm(null)
+                }}
+              >
+                {confirm === 'write' ? '넣고 도입' : confirm === 'revert' ? '되돌리기' : '지우기'}
               </button>
-              {!i.applied && i.target && (
-                <button className="btn btn-ghost btn-sm" onClick={() => write.mutate(undefined)}>
-                  {i.appliedPath ? '파일에 다시 넣기' : '파일에 넣기'}
-                </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setConfirm(null)}>
+                취소
+              </button>
+            </div>
+          ) : (
+            <>
+              {editable && (
+                <>
+                  <button className="btn btn-ghost btn-sm" disabled={!i.metric} onClick={() => adopt.mutate(false)} title="이미 손으로 넣었을 때 — 파일은 그대로 두고 측정만 시작">
+                    직접 넣었음
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setConfirm('delete')}>
+                    삭제
+                  </button>
+                </>
               )}
-              <button className="btn btn-ghost btn-sm" onClick={() => setConfirm('revert')}>
-                되돌리기
-              </button>
-            </>
-          )}
-          {i.status === 'done' && (
-            <>
-              <button className="btn btn-ghost btn-sm" onClick={() => reopen.mutate(undefined)}>
-                다시 측정
-              </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setConfirm('revert')} title="효과가 없었으면 규칙을 빼요">
-                규칙 빼기
-              </button>
+              {i.status === 'adopted' && (
+                <>
+                  <button className="btn btn-sm" onClick={() => close.mutate(undefined)} title="지금 측정값으로 결과를 확정">
+                    결과 확정
+                  </button>
+                  {!i.applied && i.target && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => write.mutate(undefined)}>
+                      {i.appliedPath ? '파일에 다시 넣기' : '파일에 넣기'}
+                    </button>
+                  )}
+                  <button className="btn btn-ghost btn-sm" onClick={() => setConfirm('revert')}>
+                    되돌리기
+                  </button>
+                </>
+              )}
+              {i.status === 'done' && (
+                <>
+                  <button className="btn btn-ghost btn-sm" onClick={() => reopen.mutate(undefined)}>
+                    다시 측정
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setConfirm('revert')}>
+                    규칙 빼기
+                  </button>
+                </>
+              )}
             </>
           )}
         </div>
-      )}
       </div>
     </article>
   )
 }
 
-function Effect({ insight: i, def }: { insight: Insight; def: MetricDef | undefined }) {
-  const verdict = i.verdict ?? '측정 중'
-  const progress = i.afterFrom && i.afterTo ? Math.min(14, Math.round((parseYmd(i.afterTo).getTime() - parseYmd(i.afterFrom).getTime()) / 86400000) + 1) : 0
-  const md = (s: string | null) => (s ? `${parseYmd(s).getMonth() + 1}/${parseYmd(s).getDate()}` : '')
+/** 긴 글은 세 줄까지만, «더 보기»로 펼친다 */
+function Clamp({ children }: { children: React.ReactNode }) {
+  const [more, setMore] = useState(false)
   return (
-    <div className="ob-effect">
-      <div className="ob-effect-nums">
-        <div>
-          <span className="subtle">도입 전 {md(i.baselineFrom)}~{md(i.baselineTo)}</span>
-          <b className="num">{fmtMetric(def, i.baseline)}</b>
-        </div>
-        <span className="ob-arrow">→</span>
-        <div>
-          <span className="subtle">
-            도입 후 {md(i.afterFrom)}~{md(i.afterTo)}
-            {i.status === 'adopted' && ` · 일한 날 ${i.afterDays}일`}
-          </span>
-          <b className="num">{fmtMetric(def, i.after)}</b>
-        </div>
-        <span className={`ob-verdict ${VERDICT_TONE[verdict] ?? 'flat'}`}>
-          {verdict}
-          {i.deltaPct != null && verdict !== '측정 중' && ` ${i.deltaPct > 0 ? '+' : ''}${Math.round(i.deltaPct)}%`}
-        </span>
-      </div>
-      {i.status === 'adopted' && (
-        <div className="ob-progress" title={`측정 창 14일 중 ${progress}일 지남`}>
-          <span style={{ width: `${(progress / 14) * 100}%` }} />
-        </div>
-      )}
-      <div className="subtle ob-effect-foot">
-        {def?.label ?? i.metric} · {i.scope ?? '전체'} · 도입 {fmtDateTime(i.adoptedAt)}
-        {i.closedAt && ` · 확정 ${fmtDateTime(i.closedAt)}`}
-      </div>
+    <div className={`ob-clamp${more ? ' more' : ''}`}>
+      {children}
+      <button className="ob-clamp-btn" onClick={() => setMore((v) => !v)}>
+        {more ? '접기' : '더 보기'}
+      </button>
     </div>
   )
 }
