@@ -1,4 +1,9 @@
-<p align="center"><img src="front/public/brand/vita-logo-on-white.svg" width="360" alt="Vita"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="front/public/brand/vita-wordmark-dark.svg">
+    <img src="front/public/brand/vita-wordmark.svg" width="180" alt="vita">
+  </picture>
+</p>
 
 # Vita
 

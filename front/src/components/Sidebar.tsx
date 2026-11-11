@@ -6,7 +6,7 @@ import type { LiveView, TaskWork } from '../api/types'
 import { fmtRelative } from '../lib/format'
 import { useTheme, type ThemeChoice } from '../lib/theme'
 import { Icon } from './Icon'
-import { VitaLogo } from './VitaLogo'
+import { VitaWordmark } from './VitaLogo'
 import { StatusDot } from './common'
 
 export function Sidebar() {
@@ -36,7 +36,7 @@ export function Sidebar() {
     <aside className="sidebar">
       <div className="brand">
         <Link to="/" className="brand-logo" aria-label="Vita — 업무로">
-          <VitaLogo height={20} />
+          <VitaWordmark height={22} />
         </Link>
         <small>에이전트 세션 기반 업무 관리</small>
       </div>

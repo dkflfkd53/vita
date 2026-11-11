@@ -17,6 +17,21 @@ export function VitaMark({ size = 22 }: { size?: number }) {
   )
 }
 
+/** 글자만(앱 좌측 상단·README) — 기호 없이 워드마크만 */
+export function VitaWordmark({ height = 22 }: { height?: number }) {
+  return (
+    <svg viewBox="-6 10 182 98" height={height} role="img" aria-label="Vita" style={{ display: 'block' }}>
+      <path d="M2 52L22 100L42 52" {...stroke} />
+      <path d="M60 52V100" {...stroke} />
+      <circle cx="60" cy="30" r="8" fill="currentColor" />
+      <path d="M84 30V86q0 14 14 14h4" {...stroke} />
+      <path d="M74 52H98" {...stroke} />
+      <circle cx="138" cy="76" r="25" fill="none" stroke="currentColor" strokeWidth="12" />
+      <path d="M163 52V100" {...stroke} />
+    </svg>
+  )
+}
+
 export function VitaLogo({ height = 20 }: { height?: number }) {
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: Math.round(height * 0.4) }} role="img" aria-label="Vita">
