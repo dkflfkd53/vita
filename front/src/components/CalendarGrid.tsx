@@ -133,8 +133,8 @@ export function WeekView({
         const list = (deploys.data ?? []).filter((e) => e.day === day)
         return list.length === 0 ? null : (
           <div key={`d-${day}`} className="wk-deploys" style={{ gridColumn: i + 1, gridRow: lanes + 2 }}>
-            {list.map((e) => (
-              <DeployBar key={`${e.project}-${e.jobId}`} e={e} />
+            {groupByLabel(list).map(([label, evs]) => (
+              <DeployBar key={label} label={label} events={evs} />
             ))}
           </div>
         )
@@ -165,23 +165,33 @@ export function WeekView({
   )
 }
 
-/** CI/CD 배포 한 건 — 세션 막대와 같은 모양(배포 색), 누르면 GitLab 잡 */
-function DeployBar({ e, compact }: { e: DeployEvent; compact?: boolean }) {
-  const ok = e.status === 'success'
+/** 같은 날 같은 이름의 배포는 한 번으로 — 여러 번(back·front, 재배포) 해도 막대 하나 */
+function groupByLabel(list: DeployEvent[]): [string, DeployEvent[]][] {
+  const m = new Map<string, DeployEvent[]>()
+  list.forEach((e) => m.set(e.label, [...(m.get(e.label) ?? []), e]))
+  return [...m.entries()]
+}
+
+/** 그날의 배포 막대 하나 — 하나라도 실패면 ✕, 자세한 건 툴팁·날짜 상세. 누르면 마지막 GitLab 잡 */
+function DeployBar({ label, events }: { label: string; events: DeployEvent[] }) {
+  const ok = events.every((e) => e.status === 'success')
+  const last = events[events.length - 1]
   return (
     <a
-      className={`seg deploy-seg${compact ? ' compact' : ''}${ok ? '' : ' fail'}`}
-      href={e.webUrl ?? undefined}
+      className={`seg deploy-seg${ok ? '' : ' fail'}`}
+      href={last.webUrl ?? undefined}
       target="_blank"
       rel="noreferrer"
       onClick={(ev) => ev.stopPropagation()}
-      title={[`${e.label} ${e.shortName} ${e.sha ?? ''} — ${ok ? '성공' : `실패(${e.status})`}`, e.finishedAt ? new Date(e.finishedAt).toLocaleString('ko-KR') : '', e.user ?? '', e.duration ? `${Math.round(e.duration)}초` : '']
-        .filter(Boolean)
-        .join('\n')}
+      title={[
+        `${label} — ${events.length}번`,
+        ...events.map(
+          (e) =>
+            `${e.finishedAt ? new Date(e.finishedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : ''} ${e.shortName} ${e.sha ?? ''} ${e.status === 'success' ? '✓' : '✕'}`,
+        ),
+      ].join('\n')}
     >
-      <span className="seg-title">
-        {e.label} {e.shortName}
-      </span>
+      <span className="seg-title">{label}</span>
       <span className="seg-h">{ok ? '✓' : '✕'}</span>
     </a>
   )
@@ -236,7 +246,7 @@ function MonthWeek({
               const list = (deploys.data ?? []).filter((e) => e.day === day)
               return list.length > 0 ? (
                 <span className="cal-deploy" title={list.map((e) => `${e.label} ${e.shortName} ${e.sha ?? ''} ${e.status === 'success' ? '성공' : '실패'}`).join('\n')}>
-                  배포 {list.length}
+                  배포{list.some((e) => e.status !== 'success') ? ' ✕' : ''}
                 </span>
               ) : null
             })()}
