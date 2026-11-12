@@ -9,6 +9,7 @@ import { TasksPage } from './TasksPage'
 import { Icon } from '../components/Icon'
 import { ErrorBox } from '../components/common'
 import { UsageButton } from '../components/UsageBreakdown'
+import { IcsExport } from '../components/IcsExport'
 import { MonthGrid, WeekView, mondayOf, monthWeeks, nextWorkday, prevWorkday, weekDays } from '../components/CalendarGrid'
 import { addDays, fmtShort, fmtUsd, parseYmd, today, weekKey, weekLabel, weekMonday, ymd } from '../lib/format'
 
@@ -170,6 +171,7 @@ export function CalendarPage() {
                   목록
                 </button>
               </div>
+              <IcsExport />
               {!isList && (
                 <>
                   <button className="btn btn-sm" onClick={() => update({ d: todayKey, day: todayKey })}>
