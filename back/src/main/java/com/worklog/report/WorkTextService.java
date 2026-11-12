@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 
 import com.worklog.collect.CollectScheduler;
 import com.worklog.config.ProjectScope;
+import com.worklog.deploy.DeployService;
 import com.worklog.config.Settings.WorkTextConfig;
 import com.worklog.config.Settings.WorkTextPart;
 import com.worklog.config.SettingsService;
@@ -69,6 +70,7 @@ public class WorkTextService {
     private final CollectScheduler collector;
     private final SettingsService settings;
     private final ProjectScope scope;
+    private final DeployService deploy;
 
     public record PartText(String part, String title, String content, String source, String generatedAt) {
     }
@@ -560,6 +562,14 @@ public class WorkTextService {
                 recent.stream().skip(Math.max(0, recent.size() - 3))
                         .forEach(s -> in.append("  최근 작업: ").append(s).append('\n'));
             }
+        }
+        List<DeployService.Event> deploys = deploy.events(p.from().toString(), p.to().toString());
+        if (!deploys.isEmpty()) {
+            in.append("\n[배포 기록] (CI/CD 파이프라인 — 운영 배포처럼 할 일에 안 적은 일도 여기 있다)\n");
+            deploys.forEach(d -> in.append("- [").append(d.category() == null ? "기타" : d.category()).append("] ")
+                    .append(d.day() == null ? "" : d.day().substring(5)).append(' ').append(d.label()).append(' ').append(d.shortName())
+                    .append(d.sha() == null ? "" : " " + d.sha()).append(" | ").append("success".equals(d.status()) ? "성공" : "실패(" + d.status() + ")")
+                    .append('\n'));
         }
         in.append("\n[코드 변경]\n");
         List<CommitRow> commits = store.rawCommits(p.from().toString(), p.to().toString());

@@ -1531,3 +1531,19 @@ a.ob-line-cell:hover b { text-decoration: underline; }
 .update-pop ul, .update-body ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: var(--text); }
 .update-body p { margin: 0 0 6px; font-size: 13.5px; }
 .update-body code { font-family: var(--mono); font-size: 12.5px; }
+/* CI/CD 배포 기록 */
+.deploy-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 2px 14px 8px; font-size: 13px; }
+.deploy-name { font-weight: 600; color: var(--text-muted); }
+.deploy-ev { font-variant-numeric: tabular-nums; font-size: 12.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border-muted); color: var(--text-muted); text-decoration: none; }
+.deploy-ev.ok { border-color: color-mix(in srgb, var(--c-green) 35%, transparent); }
+.deploy-ev.fail { color: var(--c-red); border-color: color-mix(in srgb, var(--c-red) 40%, transparent); }
+a.deploy-ev:hover { color: var(--text); }
+.deploy-st { display: flex; flex-direction: column; gap: 8px; }
+.deploy-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.deploy-row2 label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--text-subtle); }
+.deploy-src { display: grid; grid-template-columns: 1.4fr 1fr 1fr 0.7fr 1fr auto; gap: 6px; align-items: center; }
+.deploy-src-head { font-size: 12px; color: var(--text-subtle); }
+.deploy-status { font-size: 12.5px; margin: 0; }
+.cal-deploy { font-size: 11px; color: var(--c-green); font-weight: 600; }
+@media (max-width: 820px) { .deploy-row2, .deploy-src { grid-template-columns: 1fr; } .deploy-src-head { display: none; } }
+.deploy-st .st-input { width: 100%; max-width: none; box-sizing: border-box; margin: 0; }

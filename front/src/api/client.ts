@@ -39,6 +39,8 @@ import type {
   DietLog,
   Outcomes,
   UpdateStatus,
+  DeployEvent,
+  DeployConfig,
 } from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -125,6 +127,11 @@ export const api = {
     request<Observer>(`/observer/${kind}/${key}${scope ? `?scope=${encodeURIComponent(scope)}` : ''}`),
   metricDefs: () => request<MetricDef[]>('/observer/metric-defs'),
   insightPending: () => request<InsightPending>('/observer/insights/pending'),
+  deploys: (from: string, to: string) => request<DeployEvent[]>(`/deploys?from=${from}&to=${to}`),
+  deployConfig: () => request<{ config: DeployConfig; lastError: string | null; lastSyncAt: string | null }>('/deploys/config'),
+  saveDeployConfig: (c: DeployConfig) =>
+    request<{ added: number; error: string | null; syncedAt: string | null }>('/deploys/config', { method: 'PUT', body: JSON.stringify(c) }),
+  deploySync: () => request<{ added: number; error: string | null; syncedAt: string | null }>('/deploys/sync', { method: 'POST' }),
   updateStatus: () => request<UpdateStatus>('/update'),
   updateCheck: () => request<UpdateStatus>('/update/check', { method: 'POST' }),
   updateApply: () => request<{ message: string }>('/update/apply', { method: 'POST' }),

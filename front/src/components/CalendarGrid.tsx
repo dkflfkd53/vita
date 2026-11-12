@@ -1,4 +1,6 @@
 import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '../api/client'
 import { useNavigate } from 'react-router-dom'
 import type { CalendarDay } from '../api/types'
 import { hiddenPerDay, layoutWeek, type Segment } from '../lib/calendarLayout'
@@ -96,6 +98,8 @@ export function WeekView({
   onSelect: (day: string) => void
 }) {
   const segments = useMemo(() => layoutWeek(days, byDay, prevWorkday(days[0]), nextWorkday(days[days.length - 1])), [days, byDay])
+  // CI/CD 배포 기록 — 그날 머리에 «배포 n»
+  const deploys = useQuery({ queryKey: ['deploys', days[0], days[days.length - 1]], queryFn: () => api.deploys(days[0], days[days.length - 1]) })
   const lanes = Math.max(3, ...segments.map((s) => s.lane + 1))
   return (
     <div className="cal wk" style={{ gridTemplateRows: `56px repeat(${lanes}, 30px) minmax(120px, auto)` }}>
@@ -119,6 +123,14 @@ export function WeekView({
                 {fmtShort(d.activeSec)} · {fmtUsd(d.costUsd)}
               </span>
             )}
+            {(() => {
+              const list = (deploys.data ?? []).filter((e) => e.day === day)
+              return list.length > 0 ? (
+                <span className="cal-deploy" title={list.map((e) => `${e.label} ${e.shortName} ${e.sha ?? ''} ${e.status === 'success' ? '성공' : '실패'}`).join('\n')}>
+                  배포 {list.length}
+                </span>
+              ) : null
+            })()}
           </div>
         )
       })}

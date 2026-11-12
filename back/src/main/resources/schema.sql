@@ -263,6 +263,24 @@ CREATE TABLE IF NOT EXISTS memory_diet_log (
     backup        TEXT
 );
 
+-- CI/CD 배포 기록(GitLab 잡). 설정 «배포 기록»의 원천마다 그 잡의 끝난 실행을 옮겨 적는다
+CREATE TABLE IF NOT EXISTS deploy_event (
+    project     TEXT NOT NULL,
+    job_id      INTEGER NOT NULL,
+    source      TEXT NOT NULL,
+    status      TEXT NOT NULL,
+    ref         TEXT,
+    sha         TEXT,
+    started_at  TEXT,
+    finished_at TEXT,
+    day         TEXT,
+    duration    REAL,
+    user_name   TEXT,
+    web_url     TEXT,
+    PRIMARY KEY (project, job_id)
+);
+CREATE INDEX IF NOT EXISTS idx_deploy_event_day ON deploy_event(day);
+
 -- ───────── 사용자 설정 ─────────
 -- 화면의 설정에서 바꾸는 값(JSON). key = projects | routines | work-text
 CREATE TABLE IF NOT EXISTS setting (

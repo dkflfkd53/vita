@@ -623,6 +623,39 @@ export interface Outcomes {
 }
 
 /** always = 매 세션 통째로 읽힘, onDemand = 관련 있을 때만(메모리 본문), targetTokens = 넣을 곳 지금 크기 */
+/** CI/CD 배포 기록 한 건(GitLab 잡) */
+export interface DeployEvent {
+  project: string
+  jobId: number
+  source: string
+  label: string
+  category: string | null
+  shortName: string
+  status: string
+  ref: string | null
+  sha: string | null
+  startedAt: string | null
+  finishedAt: string | null
+  day: string | null
+  duration: number | null
+  user: string | null
+  webUrl: string | null
+}
+
+export interface DeploySource {
+  project: string
+  job: string
+  label: string | null
+  category: string | null
+  shortName: string | null
+}
+
+export interface DeployConfig {
+  baseUrl: string | null
+  token: string | null
+  sources: DeploySource[]
+}
+
 /** 버전 업데이트 상태 — behind = 받을 새 커밋 수 */
 export interface UpdateStatus {
   available: boolean
