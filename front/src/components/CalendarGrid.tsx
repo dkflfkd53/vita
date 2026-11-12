@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useNavigate } from 'react-router-dom'
-import type { CalendarDay } from '../api/types'
+import type { CalendarDay, DeployEvent } from '../api/types'
 import { hiddenPerDay, layoutWeek, type Segment } from '../lib/calendarLayout'
 import { addDays, fmtDuration, fmtShort, fmtUsd, itemColor, parseYmd, weekKey, ymd } from '../lib/format'
 import { Icon } from './Icon'
@@ -102,7 +102,7 @@ export function WeekView({
   const deploys = useQuery({ queryKey: ['deploys', days[0], days[days.length - 1]], queryFn: () => api.deploys(days[0], days[days.length - 1]) })
   const lanes = Math.max(3, ...segments.map((s) => s.lane + 1))
   return (
-    <div className="cal wk" style={{ gridTemplateRows: `56px repeat(${lanes}, 30px) minmax(120px, auto)` }}>
+    <div className="cal wk" style={{ gridTemplateRows: `56px repeat(${lanes}, 30px) auto minmax(120px, auto)` }}>
       {days.map((day, i) => (
         <div
           key={`bg-${day}`}
@@ -123,14 +123,6 @@ export function WeekView({
                 {fmtShort(d.activeSec)} · {fmtUsd(d.costUsd)}
               </span>
             )}
-            {(() => {
-              const list = (deploys.data ?? []).filter((e) => e.day === day)
-              return list.length > 0 ? (
-                <span className="cal-deploy" title={list.map((e) => `${e.label} ${e.shortName} ${e.sha ?? ''} ${e.status === 'success' ? '성공' : '실패'}`).join('\n')}>
-                  배포 {list.length}
-                </span>
-              ) : null
-            })()}
           </div>
         )
       })}
@@ -138,9 +130,19 @@ export function WeekView({
         <SegmentBar key={`${s.taskKey}-${s.start}`} seg={s} row={s.lane + 2} />
       ))}
       {days.map((day, i) => {
+        const list = (deploys.data ?? []).filter((e) => e.day === day)
+        return list.length === 0 ? null : (
+          <div key={`d-${day}`} className="wk-deploys" style={{ gridColumn: i + 1, gridRow: lanes + 2 }}>
+            {list.map((e) => (
+              <DeployBar key={`${e.project}-${e.jobId}`} e={e} />
+            ))}
+          </div>
+        )
+      })}
+      {days.map((day, i) => {
         const d = byDay.get(day)
         return (
-          <div key={`s-${day}`} className="wk-summary" style={{ gridColumn: i + 1, gridRow: lanes + 2 }}>
+          <div key={`s-${day}`} className="wk-summary" style={{ gridColumn: i + 1, gridRow: lanes + 3 }}>
             {d?.overview && <p>{d.overview}</p>}
             {d && (d.commits > 0 || d.hasSummary) && (
               <div className="cal-foot">
@@ -163,6 +165,28 @@ export function WeekView({
   )
 }
 
+/** CI/CD 배포 한 건 — 세션 막대와 같은 모양(배포 색), 누르면 GitLab 잡 */
+function DeployBar({ e, compact }: { e: DeployEvent; compact?: boolean }) {
+  const ok = e.status === 'success'
+  return (
+    <a
+      className={`seg deploy-seg${compact ? ' compact' : ''}${ok ? '' : ' fail'}`}
+      href={e.webUrl ?? undefined}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(ev) => ev.stopPropagation()}
+      title={[`${e.label} ${e.shortName} ${e.sha ?? ''} — ${ok ? '성공' : `실패(${e.status})`}`, e.finishedAt ? new Date(e.finishedAt).toLocaleString('ko-KR') : '', e.user ?? '', e.duration ? `${Math.round(e.duration)}초` : '']
+        .filter(Boolean)
+        .join('\n')}
+    >
+      <span className="seg-title">
+        {e.label} {e.shortName}
+      </span>
+      <span className="seg-h">{ok ? '✓' : '✕'}</span>
+    </a>
+  )
+}
+
 // ───────── 월 보기 (주 한 줄) ─────────
 
 function MonthWeek({
@@ -182,6 +206,7 @@ function MonthWeek({
 }) {
   const segments = useMemo(() => layoutWeek(days, byDay, prevWorkday(days[0]), nextWorkday(days[days.length - 1])), [days, byDay])
   const hidden = hiddenPerDay(segments, MONTH_LANES, days.length)
+  const deploys = useQuery({ queryKey: ['deploys', days[0], days[days.length - 1]], queryFn: () => api.deploys(days[0], days[days.length - 1]) })
   return (
     <div className="mrow" style={{ gridTemplateRows: `30px repeat(${MONTH_LANES}, 23px) minmax(26px, 1fr)` }}>
       {days.map((day, i) => (
@@ -207,6 +232,14 @@ function MonthWeek({
           >
             <span className="daynum">{parseYmd(day).getDate()}</span>
             {d && d.activeSec > 0 && <span className="day-total">{fmtShort(d.activeSec)}</span>}
+            {(() => {
+              const list = (deploys.data ?? []).filter((e) => e.day === day)
+              return list.length > 0 ? (
+                <span className="cal-deploy" title={list.map((e) => `${e.label} ${e.shortName} ${e.sha ?? ''} ${e.status === 'success' ? '성공' : '실패'}`).join('\n')}>
+                  배포 {list.length}
+                </span>
+              ) : null
+            })()}
           </div>
         )
       })}

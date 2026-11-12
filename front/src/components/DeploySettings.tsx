@@ -32,7 +32,7 @@ export function DeploySettings() {
       <div className="st-head">
         <div>
           <h2>배포 기록 (CI/CD)</h2>
-          <p>GitLab 파이프라인의 배포 잡을 10분마다 읽어 업무 보드(카테고리 아래 한 줄)·주간보고 글에 넣어요. 토큰은 read_api 권한이면 충분해요.</p>
+          <p>GitLab 파이프라인의 배포 잡을 10분마다 읽어 세션 캘린더(배포한 날에 막대)·날짜 상세·주간보고 글에 넣어요. 토큰은 read_api 권한이면 충분해요.</p>
         </div>
         <div className="st-save">
           <button className="btn btn-sm" disabled={sync.isPending} onClick={() => sync.mutate()}>

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useBoard, useRunningJob, useSettings, useStartJob, useUpdateItem, useWorkMutation } from '../api/hooks'
 import { api } from '../api/client'
-import type { Board, BoardKind, DeployEvent, UnassignedSession, WorkItem, WorkItemPatch, WorkPriority, WorkStatus } from '../api/types'
+import type { Board, BoardKind, UnassignedSession, WorkItem, WorkItemPatch, WorkPriority, WorkStatus } from '../api/types'
 import { Icon } from '../components/Icon'
 import { ErrorBox, Loading, ProjectLabel } from '../components/common'
 import { UsageButton } from '../components/UsageBreakdown'
@@ -293,8 +293,6 @@ function sectionsOf(items: WorkItem[], subtypes: string[]): [string | null, Work
 
 function TodoGroups({ board, openId, setOpenId }: { board: Board; openId: number | null; setOpenId: (id: number | null) => void }) {
   const { data: settings } = useSettings()
-  // CI/CD 배포 기록(GitLab 잡) — 카테고리 머리 아래 한 줄
-  const deploys = useQuery({ queryKey: ['deploys', board.from, board.to], queryFn: () => api.deploys(board.from, board.to), refetchInterval: 300_000 })
   const subtypesOf = (category: string | null) => settings?.categories.find((c) => c.name === category)?.subtypes ?? []
   const groups = new Map<string, WorkItem[]>()
   for (const c of board.categories) groups.set(c, [])
@@ -322,7 +320,6 @@ function TodoGroups({ board, openId, setOpenId }: { board: Board; openId: number
                 </>
               )}
             </h3>
-            <DeployLine events={(deploys.data ?? []).filter((d) => (d.category ?? NO_CATEGORY) === category)} />
             <div className="t-list">
               {sectionsOf(items, subtypesOf(category)).map(
                 ([subtype, list]) => (
@@ -354,33 +351,6 @@ function TodoGroups({ board, openId, setOpenId }: { board: Board; openId: number
               <AddTodo category={category === NO_CATEGORY ? null : category} week={board.weekKey} showWeek={board.kind === 'month'} />
             </div>
           </section>
-        )
-      })}
-    </>
-  )
-}
-
-/** 배포 한 줄 — «운영 배포 2회 · 11/10 back 1a2b3c4d ✓ · front 5e6f7a8b ✓». 누르면 GitLab 잡 */
-function DeployLine({ events }: { events: DeployEvent[] }) {
-  if (events.length === 0) return null
-  const byLabel = new Map<string, DeployEvent[]>()
-  events.forEach((e) => byLabel.set(e.label, [...(byLabel.get(e.label) ?? []), e]))
-  return (
-    <>
-      {[...byLabel.entries()].map(([label, list]) => {
-        const ok = list.filter((e) => e.status === 'success').length
-        return (
-          <div key={label} className="deploy-line">
-            <span className="deploy-name">
-              {label} {ok}회{list.length > ok && <span className="bad"> · 실패 {list.length - ok}</span>}
-            </span>
-            {list.map((e) => (
-              <a key={`${e.project}-${e.jobId}`} className={`deploy-ev ${e.status === 'success' ? 'ok' : 'fail'}`} href={e.webUrl ?? undefined} target="_blank" rel="noreferrer"
-                title={`${e.finishedAt ? new Date(e.finishedAt).toLocaleString('ko-KR') : ''} · ${e.ref ?? ''} · ${e.user ?? ''}${e.duration ? ` · ${Math.round(e.duration)}초` : ''}`}>
-                {e.day ? `${Number(e.day.slice(5, 7))}/${Number(e.day.slice(8))}` : ''} {e.shortName} {e.sha ?? ''} {e.status === 'success' ? '✓' : '✕'}
-              </a>
-            ))}
-          </div>
         )
       })}
     </>

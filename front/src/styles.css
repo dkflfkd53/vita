@@ -1547,3 +1547,8 @@ a.deploy-ev:hover { color: var(--text); }
 .cal-deploy { font-size: 11px; color: var(--c-green); font-weight: 600; }
 @media (max-width: 820px) { .deploy-row2, .deploy-src { grid-template-columns: 1fr; } .deploy-src-head { display: none; } }
 .deploy-st .st-input { width: 100%; max-width: none; box-sizing: border-box; margin: 0; }
+/* 세션 캘린더의 배포 막대 — 세션 막대 모양, 배포 색 */
+.wk-deploys { display: flex; flex-direction: column; gap: 0; padding: 2px 0; position: relative; z-index: 1; }
+.deploy-seg { --seg: var(--c-teal); height: 26px; text-decoration: none; }
+.deploy-seg.fail { --seg: var(--c-red); }
+.deploy-seg .seg-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }

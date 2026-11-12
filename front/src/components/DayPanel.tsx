@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useDay, useLastJob, useRunningJob, useStartJob } from '../api/hooks'
 import { api } from '../api/client'
 import type { DaySession, DayTask } from '../api/types'
@@ -13,6 +14,7 @@ export function DayPanel({ day, onClose }: { day: string; onClose: () => void })
   const last = useLastJob(jobKey)
   const start = useStartJob((d: string) => api.summarizeDay(d))
   const isToday = day === today()
+  const deploys = useQuery({ queryKey: ['deploys', day, day], queryFn: () => api.deploys(day, day) })
 
   return (
     <aside className="panel">
@@ -61,6 +63,26 @@ export function DayPanel({ day, onClose }: { day: string; onClose: () => void })
               )}
               {last?.status === 'FAILED' && <p className="placeholder" style={{ color: 'var(--danger)', marginTop: 6 }}>요약 실패: {last.message}</p>}
             </div>
+
+            {(deploys.data ?? []).length > 0 && (
+              <>
+                <div className="section-title">배포 {deploys.data!.length}</div>
+                <ul className="commit-list">
+                  {deploys.data!.map((e) => (
+                    <li key={`${e.project}-${e.jobId}`}>
+                      <span className={e.status === 'success' ? 'good' : 'bad'}>{e.status === 'success' ? '✓' : '✕'}</span>
+                      <a className="msg" href={e.webUrl ?? undefined} target="_blank" rel="noreferrer">
+                        {e.label} {e.shortName} {e.sha}
+                      </a>
+                      <span className="repo">
+                        {e.finishedAt ? fmtTime(e.finishedAt) : ''}
+                        {e.duration ? ` · ${Math.round(e.duration)}초` : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
 
             {data.tasks.length > 0 && <div className="section-title">작업</div>}
             {data.tasks.map((t) => (
