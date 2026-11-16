@@ -164,6 +164,30 @@ export function periodKeyOf(kind: PeriodUnit, d: Date = new Date()): string {
   return kind === 'week' ? weekKey(d) : kind === 'month' ? monthKey(d) : String(d.getFullYear())
 }
 
+/** 기간 키를 n칸 옮긴다(이전 -1 · 다음 +1) — 서버 응답 없이 화살표가 움직이게 */
+export function shiftPeriod(kind: PeriodUnit, key: string, n: number): string {
+  if (kind === 'week') return weekKey(addDays(weekMonday(key), 7 * n))
+  if (kind === 'month') {
+    const [y, m] = key.split('-').map(Number)
+    return monthKey(new Date(y, m - 1 + n, 1))
+  }
+  return String(Number(key) + n)
+}
+
+/** 기간 키 → 화면 이름(2026년 11월 3주차 / 2026년 11월 / 2026년) */
+export function periodLabel(kind: PeriodUnit, key: string): string {
+  if (kind === 'week') {
+    const mon = weekMonday(key)
+    const fri = addDays(mon, 4)
+    return `${weekLabel(key, true)} (${mon.getMonth() + 1}/${mon.getDate()}~${fri.getMonth() + 1}/${fri.getDate()})`
+  }
+  if (kind === 'month') {
+    const [y, m] = key.split('-').map(Number)
+    return `${y}년 ${m}월`
+  }
+  return `${key}년`
+}
+
 /** 기간 키 → 첫날·끝날(yyyy-MM-dd) */
 export function periodRange(kind: PeriodUnit, key: string): { from: string; to: string } {
   if (kind === 'week') {

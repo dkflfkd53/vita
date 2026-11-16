@@ -7,7 +7,7 @@ import type { DietItem, Insight, Outcome, InsightPatch, InsightTarget, InsightTi
 import { Icon } from '../components/Icon'
 import { ErrorBox, Loading, ProjectLabel } from '../components/common'
 import { UsageOverviewSection } from '../components/UsageOverview'
-import { PERIOD_NAME, PREV_PERIOD, THIS_PERIOD, fmtDateTime, fmtDuration, fmtShort, fmtUsd, periodKeyOf } from '../lib/format'
+import { PERIOD_NAME, PREV_PERIOD, THIS_PERIOD, periodLabel, shiftPeriod, fmtDateTime, fmtDuration, fmtShort, fmtUsd, periodKeyOf } from '../lib/format'
 
 // 에이전트 옵저버 — Claude 세션이 시간·토큰을 어디에 쓰는지(지표·병목) 보고,
 // 개선 규칙을 md 에 넣은 뒤 그 지표가 실제로 좋아졌는지(도입 전 14일 ↔ 도입 후 14일) 기록한다
@@ -80,11 +80,11 @@ export function ObserverPage() {
               </button>
             ))}
           </div>
-          <button className="btn btn-ghost icon-btn btn-sm" onClick={() => data && go({ key: data.prevKey })} aria-label={`이전 ${PERIOD_NAME[kind]}`}>
+          <button className="btn btn-ghost icon-btn btn-sm" onClick={() => go({ key: shiftPeriod(kind, key, -1) })} aria-label={`이전 ${PERIOD_NAME[kind]}`}>
             <Icon name="left" />
           </button>
-          <h2 style={{ minWidth: 200, textAlign: 'center' }}>{data?.label ?? key}</h2>
-          <button className="btn btn-ghost icon-btn btn-sm" onClick={() => data && go({ key: data.nextKey })} aria-label={`다음 ${PERIOD_NAME[kind]}`}>
+          <h2 style={{ minWidth: 200, textAlign: 'center' }}>{data?.label ?? periodLabel(kind, key)}</h2>
+          <button className="btn btn-ghost icon-btn btn-sm" onClick={() => go({ key: shiftPeriod(kind, key, 1) })} aria-label={`다음 ${PERIOD_NAME[kind]}`}>
             <Icon name="right" />
           </button>
           {key !== periodKeyOf(kind) && (
