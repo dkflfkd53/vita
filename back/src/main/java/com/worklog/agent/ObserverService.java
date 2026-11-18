@@ -17,6 +17,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -624,7 +625,7 @@ public class ObserverService {
             list.add(new InsightRequest(title, n.path("problem").asText(null),
                     Metric.of(metric).isPresent() ? metric : null,
                     scope != null && this.scope.labels().contains(scope) ? scope : null,
-                    recommendTarget(tmap.containsKey(target) ? target : "global", sessions, tmap),
+                    recommendTarget(tmap.containsKey(target) ? target : "global", sessions, tmap, src -> memoryOf(src, tmap)),
                     n.path("snippet").asText(null), null, null, tierOf(n.path("tier").asText(null)),
                     n.path("tierReason").asText(null), n.path("effect").asText(null), sessions, readSignals(n.path("signals"))));
         }
@@ -658,16 +659,36 @@ public class ObserverService {
 
     /** 발생 세션이 한 저장소뿐이면 그 저장소 메모리, 여러 저장소면 전역(그 저장소 세션만 규칙을 읽으므로). 모르면 AI 가 고른 대로 */
     static String recommendTarget(String chosen, List<SourceSession> sessions, Map<String, Target> tmap) {
+        return recommendTarget(chosen, sessions, tmap, s -> s.repo() == null ? null : "memory:" + s.repo());
+    }
+
+    /** memoryOf = 그 세션이 실제로 읽는 메모리의 넣을 곳 키(저장소 메모리, 없으면 작업 폴더 메모리) */
+    static String recommendTarget(String chosen, List<SourceSession> sessions, Map<String, Target> tmap,
+                                  Function<SourceSession, String> memoryOf) {
         Set<String> repos = new LinkedHashSet<>();
+        Set<String> memories = new LinkedHashSet<>();
         sessions.forEach(s -> {
             if (s.repo() != null) {
                 repos.add(s.repo());
             }
+            String m = memoryOf.apply(s);
+            if (m != null) {
+                memories.add(m);
+            }
         });
-        if (repos.size() == 1 && tmap.containsKey("memory:" + repos.iterator().next())) {
-            return "memory:" + repos.iterator().next();
+        if (repos.size() <= 1 && memories.size() == 1 && tmap.containsKey(memories.iterator().next())) {
+            return memories.iterator().next();
         }
         return repos.size() > 1 ? "global" : chosen;
+    }
+
+    /** 세션이 읽는 메모리 — 저장소 메모리가 넣을 곳에 있으면 그것, 아니면 그 세션 작업 폴더의 메모리 */
+    private String memoryOf(SourceSession s, Map<String, Target> tmap) {
+        if (s.repo() != null && tmap.containsKey("memory:" + s.repo())) {
+            return "memory:" + s.repo();
+        }
+        String cwd = jdbc.sql("SELECT cwd FROM session WHERE id = ?").param(s.taskKey()).query(String.class).optional().orElse(null);
+        return targets.memoryKeyFor(cwd);
     }
 
     /** 발생 세션이 비어 있는 제안에 근거 문장 속 세션 제목으로 세션을 찾아 붙인다(예전 제안용, AI 안 씀). @return 붙인 제안 수 */
