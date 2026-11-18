@@ -299,7 +299,7 @@ public class RuleLoadService {
     }
 
     private static Path loadedFile(Target t) {
-        Path p = Path.of(t.path().replaceFirst("^~", System.getProperty("user.home")));
+        Path p = InsightTargets.untilde(t.path());
         return "memory".equals(t.kind()) ? p.resolve("MEMORY.md") : p;
     }
 

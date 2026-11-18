@@ -6,8 +6,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -62,7 +65,30 @@ public class InsightTargets {
                 out.add(new Target("agents:" + repo, repo + "/AGENTS.md (Codex, 저장소)", tilde(agents), Files.exists(agents), "claude-md"));
             }
         }
+        addFolderMemories(out);
         return out;
+    }
+
+    /**
+     * 저장소 여러 개를 담은 상위 폴더에서 Claude Code 를 열면 메모리는 저장소 루트가 아니라 그 작업 폴더 이름으로 쌓인다.
+     * 세션 작업 폴더 중 MEMORY.md 가 있고 관리 대상(숨기지 않은 카테고리)인 곳을 memory:경로 로 더한다
+     */
+    private void addFolderMemories(List<Target> out) {
+        Set<String> seen = new HashSet<>();
+        out.stream().filter(t -> "memory".equals(t.kind())).forEach(t -> seen.add(t.path().toLowerCase(Locale.ROOT)));
+        for (String cwd : jdbc.sql("SELECT DISTINCT cwd FROM session WHERE cwd IS NOT NULL ORDER BY cwd").query(String.class).list()) {
+            Path dir = Path.of(cwd);
+            Path mem = memoryDir(dir);
+            if (!Files.isRegularFile(mem.resolve("MEMORY.md")) || !seen.add(tilde(mem).toLowerCase(Locale.ROOT))) {
+                continue;
+            }
+            String name = dir.getFileName() == null ? cwd : dir.getFileName().toString();
+            Optional<String> category = scope.resolve(cwd, name);
+            if (category.isEmpty() || scope.hidden(category.get())) {
+                continue;
+            }
+            out.add(new Target("memory:" + tilde(dir), name + " 메모리 (작업 폴더)", tilde(mem), true, "memory"));
+        }
     }
 
     public Optional<Target> find(String key) {
@@ -171,7 +197,7 @@ public class InsightTargets {
     public String currentRules(int maxPerFile) {
         StringBuilder sb = new StringBuilder();
         for (Target t : list()) {
-            Path p = Path.of(t.path().replaceFirst("^~", System.getProperty("user.home")));
+            Path p = untilde(t.path());
             Path f = "memory".equals(t.kind()) ? p.resolve("MEMORY.md") : p;
             if (!Files.exists(f)) {
                 continue;
@@ -201,6 +227,9 @@ public class InsightTargets {
         }
         String kind = targetKey.substring(0, colon);
         String repo = targetKey.substring(colon + 1);
+        if ("memory".equals(kind) && isFolder(repo)) {
+            return find(targetKey).map(t -> untilde(t.path()).resolve("feedback_vita_insight_%d.md".formatted(id)));
+        }
         if (!scope.repos().contains(repo)) {
             return Optional.empty();
         }
@@ -250,5 +279,15 @@ public class InsightTargets {
         String home = System.getProperty("user.home");
         String s = p.toString();
         return s.startsWith(home) ? "~" + s.substring(home.length()) : s;
+    }
+
+    /** tilde 의 반대. replaceFirst 는 치환 글의 \ 를 이스케이프로 먹어 Windows 홈(C:\Users\…)이 깨지므로 문자열로 잇는다 */
+    static Path untilde(String s) {
+        return Path.of(s.startsWith("~") ? System.getProperty("user.home") + s.substring(1) : s);
+    }
+
+    /** memory:… 뒤가 저장소 이름이 아니라 작업 폴더 경로인가 */
+    static boolean isFolder(String keyRest) {
+        return keyRest.startsWith("~") || keyRest.contains("/") || keyRest.contains("\\");
     }
 }

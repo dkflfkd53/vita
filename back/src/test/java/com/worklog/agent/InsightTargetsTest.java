@@ -70,6 +70,7 @@ class InsightTargetsTest {
         JdbcClient jdbc = JdbcClient.create(ds);
         jdbc.sql("CREATE TABLE repo (root TEXT PRIMARY KEY, name TEXT NOT NULL)").update();
         jdbc.sql("INSERT INTO repo VALUES (?, 'my-app')").param(repo.toString()).update();
+        jdbc.sql("CREATE TABLE session (id TEXT PRIMARY KEY, cwd TEXT)").update();
         WorklogProperties props = new WorklogProperties(home, home.resolve("data"), "claude", "sonnet", "haiku", null, false,
                 ZoneId.of("Asia/Seoul"), Duration.ofMinutes(15), Duration.ofMinutes(10), 0, 0, false, Map.of(), null, Map.of(), null, null);
         jdbc.sql("CREATE TABLE setting (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)").update();
@@ -89,5 +90,54 @@ class InsightTargetsTest {
         t.revert(5, "memory:my-app");
         assertThat(file).doesNotExist();
         assertThat(Files.readString(mem.resolve("MEMORY.md"))).isEqualTo("# 메모리\n## Feedback\n- [기존](a.md) — 원래 줄\n");
+    }
+
+    @Test
+    void workspaceFolderMemoryIsATarget() throws Exception {
+        // 저장소 여러 개를 담은 작업 폴더에서 연 세션 — 메모리는 저장소 루트가 아니라 작업 폴더 이름으로 쌓인다
+        Path work = home.resolve("work");
+        Files.createDirectories(work.resolve("my-app"));
+        Path mem = home.resolve("projects").resolve(work.toString().replaceAll("[^A-Za-z0-9]", "-")).resolve("memory");
+        Files.createDirectories(mem);
+        Files.writeString(mem.resolve("MEMORY.md"), "# 메모리\n- [기존](a.md) — 원래 줄\n");
+
+        SQLiteDataSource ds = new SQLiteDataSource();
+        ds.setUrl("jdbc:sqlite:" + home.resolve("w.db"));
+        JdbcClient jdbc = JdbcClient.create(ds);
+        jdbc.sql("CREATE TABLE repo (root TEXT PRIMARY KEY, name TEXT NOT NULL)").update();
+        jdbc.sql("CREATE TABLE session (id TEXT PRIMARY KEY, cwd TEXT)").update();
+        jdbc.sql("INSERT INTO session VALUES ('s1', ?)").param(work.toString()).update();
+        jdbc.sql("INSERT INTO session VALUES ('s2', ?)").param(home.resolve("elsewhere").toString()).update();
+        jdbc.sql("CREATE TABLE setting (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)").update();
+        jdbc.sql("CREATE TABLE category (name TEXT PRIMARY KEY, sort INTEGER, color TEXT, subtypes TEXT, hidden INTEGER NOT NULL DEFAULT 0)").update();
+        WorklogProperties props = new WorklogProperties(home, home.resolve("data"), "claude", "sonnet", "haiku", null, false,
+                ZoneId.of("Asia/Seoul"), Duration.ofMinutes(15), Duration.ofMinutes(10), 0, 0, false, Map.of(), null, Map.of(), null, null);
+        SettingsService settings = new SettingsService(jdbc, props);
+        settings.saveProjects(List.of(new ProjectRule(work.toString(), "업무")));
+        InsightTargets t = new InsightTargets(props, jdbc, new ProjectScope(settings, null, jdbc));
+
+        List<ObserverViews.Target> memories = t.list().stream().filter(x -> "memory".equals(x.kind())).toList();
+        assertThat(memories).hasSize(1);
+        String key = memories.getFirst().key();
+        assertThat(key).startsWith("memory:").endsWith("work");
+
+        Path file = t.apply(9, key, "빌드는 한 번에", "근거", "- 빌드 확인은 한 번만");
+        assertThat(file.getParent()).isEqualTo(mem);
+        assertThat(Files.readString(mem.resolve("MEMORY.md"))).contains("feedback_vita_insight_9.md");
+        t.revert(9, key);
+        assertThat(file).doesNotExist();
+    }
+
+    @Test
+    void untildeKeepsWindowsHomeBackslashes() {
+        String old = System.getProperty("user.home");
+        System.setProperty("user.home", "C:\\Users\\marin");
+        try {
+            assertThat(InsightTargets.untilde("~\\.claude\\CLAUDE.md").toString().replace('/', '\\'))
+                    .isEqualTo("C:\\Users\\marin\\.claude\\CLAUDE.md");
+            assertThat(InsightTargets.untilde("D:\\work\\CLAUDE.md").toString().replace('/', '\\')).isEqualTo("D:\\work\\CLAUDE.md");
+        } finally {
+            System.setProperty("user.home", old);
+        }
     }
 }
