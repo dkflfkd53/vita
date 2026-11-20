@@ -192,29 +192,73 @@ public class WorkTextService {
         return "commits".equals(part.def().source()) ? commitDraft(part, p) : itemDraft(part, board);
     }
 
+    /**
+     * 전체 업무 내용 초안 — «금주 실적» 양식. 카테고리 «■ 이름 — N건»(0건 분류는 괄호), 세부 분류가 있으면 분류 줄 «- 분류 N건 (기간)»
+     * 아래 «· 업무» 한 줄씩, 없으면 업무마다 «- 업무 (기간) — 완료|진행중». 세부·요청자는 넣지 않는다(짧게)
+     */
     private String fullDraft(Board board) {
-        StringBuilder sb = new StringBuilder("[업무 내용]\n\n");
+        LocalDate from = LocalDate.parse(board.from());
+        StringBuilder sb = new StringBuilder("[금주 실적] (" + md(from.toString()) + "~" + md(from.plusDays(4).toString()) + ")\n");
         Map<String, List<String>> subtypes = settings.subtypes();
         for (Map.Entry<String, List<ItemView>> g : groups(board).entrySet()) {
             if (g.getValue().isEmpty()) {
                 continue;
             }
-            sb.append("- ").append(g.getKey()).append('\n');
-            // 세부 분류가 있는 카테고리는 분류 줄을 한 단계 끼운다 — 분류 줄 끝에 «(N건 중 M건 처리)»
-            for (Map.Entry<String, List<ItemView>> s : bySubtype(g.getValue(), subtypes.get(g.getKey())).entrySet()) {
-                String pad = s.getKey() == null ? "" : I1;
-                if (s.getKey() != null) {
-                    sb.append(I1).append("- ").append(s.getKey()).append(tally(s.getValue())).append('\n');
-                }
-                for (ItemView i : s.getValue()) {
-                    sb.append(pad).append(I1).append("- ").append(reportName(i)).append(tag(i)).append('\n');
-                    for (String b : memoBullets(i.memo(), board.key())) {
-                        sb.append(pad).append(I2).append("- ").append(b).append('\n');
+            List<String> order = subtypes.get(g.getKey());
+            Map<String, List<ItemView>> by = bySubtype(g.getValue(), order);
+            sb.append("\n■ ").append(g.getKey()).append(" — ").append(g.getValue().size()).append("건");
+            List<String> zero = by.entrySet().stream().filter(e -> e.getKey() != null && e.getValue().isEmpty())
+                    .map(e -> e.getKey() + " 0건").toList();
+            if (!zero.isEmpty()) {
+                sb.append(" (").append(String.join(", ", zero)).append(')');
+            }
+            sb.append('\n');
+            for (Map.Entry<String, List<ItemView>> e : by.entrySet()) {
+                if (e.getKey() == null) {
+                    for (ItemView it : e.getValue()) {
+                        String per = period(it);
+                        sb.append(" - ").append(reportName(it)).append(per.isEmpty() ? "" : " (" + per + ")")
+                                .append(" — ").append("DONE".equals(it.status()) ? "완료" : "진행중").append('\n');
                     }
+                    continue;
+                }
+                if (e.getValue().isEmpty()) {
+                    continue;
+                }
+                String per = period(e.getValue());
+                sb.append(" - ").append(e.getKey()).append(' ').append(e.getValue().size()).append("건")
+                        .append(per.isEmpty() ? "" : " (" + per + ")").append('\n');
+                for (ItemView it : e.getValue()) {
+                    sb.append("   · ").append(reportName(it)).append('\n');
                 }
             }
         }
         return sb.toString().stripTrailing() + "\n";
+    }
+
+    /** 2026-11-17 → 11/17 */
+    static String md(String ymd) {
+        LocalDate d = LocalDate.parse(ymd.substring(0, 10));
+        return d.getMonthValue() + "/" + d.getDayOfMonth();
+    }
+
+    /** 이번 주 작업 기간 — 이 할 일로 잡힌 첫 작업일~마지막 작업일(완료면 완료일까지), 작업일이 없으면 마감일 */
+    static String period(ItemView i) {
+        return period(List.of(i));
+    }
+
+    static String period(List<ItemView> items) {
+        java.util.TreeSet<String> days = new java.util.TreeSet<>();
+        for (ItemView i : items) {
+            i.sessionDays().forEach(d -> days.add(d.day()));
+            if ("DONE".equals(i.status()) && i.doneAt() != null) {
+                days.add(day(i.doneAt()));
+            }
+        }
+        if (days.isEmpty()) {
+            return items.size() == 1 && items.getFirst().dueDate() != null ? md(items.getFirst().dueDate()) : "";
+        }
+        return days.first().equals(days.last()) ? md(days.first()) : md(days.first()) + "~" + md(days.last());
     }
 
     /**
@@ -542,6 +586,7 @@ public class WorkTextService {
                         .append(i.dueDate() == null ? "" : " | 마감 " + i.dueDate())
                         .append("DONE".equals(i.status()) && i.doneAt() != null ? " | 완료일 " + day(i.doneAt()) : "")
                         .append(" | 이번 주 작업 ").append(ReportService.hours(i.activeSec())).append("시간")
+                        .append(period(i).isEmpty() ? "" : " | 작업 기간 " + period(i))
                         .append(sessionNames(i)).append('\n');
                 if (i.memo() != null && !i.memo().isBlank()) {
                     in.append("  메모:\n");
@@ -629,7 +674,8 @@ public class WorkTextService {
             }
             for (ReportRow r : store.savedReports(part.kind(), p.key(), 2)) {
                 examples.append("(사용자가 직접 고쳐 저장한 ").append(Period.of("week", r.periodKey()).label()).append(" ")
-                        .append(part.title()).append(")\n").append(r.content()).append('\n');
+                        .append(part.title()).append(" — 용어·표현 참고용. 형식이 위 예시와 다르면 위 예시를 따른다)\n")
+                        .append(r.content()).append('\n');
             }
         }
 
@@ -643,18 +689,20 @@ public class WorkTextService {
                 - 원인·결과·수치(시간, 건수, 진행률)는 살린다. 이번 주에 한 일만 쓴다(메모의 다른 주 내용은 쓰지 않는다).
                 - 업무명은 입력의 할 일 이름(사용자가 대충 적은 것, 예: "김철수님 요구사항2") 대신 그 할 일의 "연결 세션" 이름을 바탕으로
                   무슨 일인지 드러나게 쓴다(가장 오래 일한 세션 중심, 업무 용어로 다듬어도 됨). 세션이 없거나 세션 이름이 "…2"·"ver2" 처럼
-                  이름 구실을 못 하면 할 일 이름. 할 일 이름의 요청자(○○님)는 아래 괄호에 "○○님 요청"으로 살린다(이 규칙도 갈래 지시보다 우선)
-                - 업무명 뒤 괄호(이 규칙이 갈래 지시·예시보다 우선):
+                  이름 구실을 못 하면 할 일 이름.
+                - 형식(줄 머리·괄호·건수·완료 표시)은 갈래 지시·예시가 정한 대로 따른다. 아래 두 규칙은 갈래 지시가 형식을 따로 정하지 않았을 때만 쓴다.
+                - 업무명 뒤 괄호(기본): 할 일 이름의 요청자(○○님)는 괄호에 "○○님 요청"으로 살린다.
                   상태가 완료인 업무는 입력의 완료일로 "(~11/5 완료)" — 마감은 쓰지 않는다. 완료가 아니고 입력에 마감이 있으면 "(~11/14 마감)".
                   요청자·진행률도 있으면 함께 "(○○님 요청, ~11/5 완료)", "(○○님 요청, ~11/14 마감)". 짧은 요약 줄은 줄 끝에 붙인다.
                   진행 중·보류·예정 같은 다른 상태는 쓰지 않는다. 마감이 없는 업무에 마감을 지어 넣지 않는다
                   단 차주 계획 갈래는 다음 주에 할 일만 쓴다(~ 예정, ~ 진행 등 계획 표현)
-                - 입력에 [세부 분류]가 있으면(이 규칙이 갈래 지시·예시보다 우선): 그 카테고리는 카테고리 줄 아래에 분류 줄 "- 분류명"을
+                - 입력에 [세부 분류]가 있으면(기본): 그 카테고리는 카테고리 줄 아래에 분류 줄 "- 분류명"을
                   한 단계 끼우고, 그 아래 업무·세부를 한 단계씩 더 들여쓴다(공백 4칸 단위). 분류는 [세부 분류] 순서, 업무의 분류는 입력의
                   "분류 …" 표시 그대로, 표시가 없으면 "미분류". 분류 줄은 [세부 분류]에 적힌 것을 그 순서대로 모두 쓴다 —
                   해당 업무가 없는 분류는 분류 줄 한 줄만 둔다(그 아래 비움). "미분류"는 해당 업무가 있을 때만 맨 끝에.
                   이번 주 업무 내용의 분류 줄 끝에는 입력 [세부 분류별 건수]의 괄호를 그대로 붙인다 — "- 오류 (2건 중 2건 처리)", "- 기능개발 (0건)".
                   차주 계획 갈래의 분류 줄에는 건수를 붙이지 않는다
+                - 건수·기간은 입력의 [세부 분류별 건수]·«작업 기간»만 쓴다. 세지 않은 숫자를 지어 넣지 않는다
                 쓸 것:%s
                 출력은 글만. 설명·코드펜스 없이.%s
 
