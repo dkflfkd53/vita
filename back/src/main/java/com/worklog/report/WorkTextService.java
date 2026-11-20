@@ -200,11 +200,11 @@ public class WorkTextService {
                 continue;
             }
             sb.append("- ").append(g.getKey()).append('\n');
-            // 세부 분류가 있는 카테고리는 분류 줄을 한 단계 끼운다
+            // 세부 분류가 있는 카테고리는 분류 줄을 한 단계 끼운다 — 분류 줄 끝에 «(N건 중 M건 처리)»
             for (Map.Entry<String, List<ItemView>> s : bySubtype(g.getValue(), subtypes.get(g.getKey())).entrySet()) {
                 String pad = s.getKey() == null ? "" : I1;
                 if (s.getKey() != null) {
-                    sb.append(I1).append("- ").append(s.getKey()).append('\n');
+                    sb.append(I1).append("- ").append(s.getKey()).append(tally(s.getValue())).append('\n');
                 }
                 for (ItemView i : s.getValue()) {
                     sb.append(pad).append(I1).append("- ").append(reportName(i)).append(tag(i)).append('\n');
@@ -235,6 +235,15 @@ public class WorkTextService {
             m.computeIfAbsent(key, k -> new ArrayList<>()).add(i);
         }
         return m;
+    }
+
+    /** 분류 줄 끝 건수 — 완료한 것까지 «(3건 중 2건 처리)», 없으면 «(0건)» */
+    static String tally(List<ItemView> items) {
+        if (items.isEmpty()) {
+            return " (0건)";
+        }
+        long done = items.stream().filter(i -> "DONE".equals(i.status())).count();
+        return " (" + items.size() + "건 중 " + done + "건 처리)";
     }
 
     /** 짧게 쓰는 요약 갈래인가(최대 줄 수 6 이하) — 차주 계획도 "- " 몇 줄로 */
@@ -512,6 +521,15 @@ public class WorkTextService {
             in.append("[세부 분류] (이 카테고리는 카테고리 아래를 분류로 한 번 더 나눈다)\n");
             subtypes.forEach((c, list) -> in.append("- ").append(c).append(": ").append(String.join(" / ", list)).append('\n'));
             in.append('\n');
+            in.append("[세부 분류별 건수] (이번 주 할 일, 완료 포함)\n");
+            for (Map.Entry<String, List<ItemView>> g : groups(board).entrySet()) {
+                if (!subtypes.containsKey(g.getKey())) {
+                    continue;
+                }
+                bySubtype(g.getValue(), subtypes.get(g.getKey())).forEach((st, list) ->
+                        in.append("- ").append(g.getKey()).append(" / ").append(st).append(':').append(tally(list)).append('\n'));
+            }
+            in.append('\n');
         }
         in.append("[이번 주 할 일]\n");
         for (Map.Entry<String, List<ItemView>> g : groups(board).entrySet()) {
@@ -634,7 +652,9 @@ public class WorkTextService {
                 - 입력에 [세부 분류]가 있으면(이 규칙이 갈래 지시·예시보다 우선): 그 카테고리는 카테고리 줄 아래에 분류 줄 "- 분류명"을
                   한 단계 끼우고, 그 아래 업무·세부를 한 단계씩 더 들여쓴다(공백 4칸 단위). 분류는 [세부 분류] 순서, 업무의 분류는 입력의
                   "분류 …" 표시 그대로, 표시가 없으면 "미분류". 분류 줄은 [세부 분류]에 적힌 것을 그 순서대로 모두 쓴다 —
-                  해당 업무가 없는 분류는 분류 줄 한 줄만 둔다(그 아래 비움). "미분류"는 해당 업무가 있을 때만 맨 끝에
+                  해당 업무가 없는 분류는 분류 줄 한 줄만 둔다(그 아래 비움). "미분류"는 해당 업무가 있을 때만 맨 끝에.
+                  이번 주 업무 내용의 분류 줄 끝에는 입력 [세부 분류별 건수]의 괄호를 그대로 붙인다 — "- 오류 (2건 중 2건 처리)", "- 기능개발 (0건)".
+                  차주 계획 갈래의 분류 줄에는 건수를 붙이지 않는다
                 쓸 것:%s
                 출력은 글만. 설명·코드펜스 없이.%s
 

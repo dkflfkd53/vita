@@ -277,13 +277,6 @@ function bySubtype(items: WorkItem[], subtypes: string[]): [string, WorkItem[]][
 const UNSORTED = '미분류'
 const DONE_GROUP = '완료'
 
-/** 세부 분류 머리 줄 — 완료한 것까지 포함해 «N건 중 M건 처리» */
-function subtypeTally(items: WorkItem[], subtypes: string[], subtype: string): { total: number; done: number } {
-  const of = (i: WorkItem) => (i.subtype && subtypes.includes(i.subtype) ? i.subtype : UNSORTED)
-  const all = items.filter((i) => of(i) === subtype)
-  return { total: all.length, done: all.filter((i) => i.status === 'DONE').length }
-}
-
 /**
  * 카테고리 카드 안 묶음 — 세부 분류가 있으면 분류 머리 줄을 늘 설정 순서대로(진행 중인 할 일이 없어도 머리 줄은 보임),
  * 그 아래 진행 중인 할 일, 완료는 맨 아래 한 묶음
@@ -335,13 +328,9 @@ function TodoGroups({ board, openId, setOpenId }: { board: Board; openId: number
                       <div className={`t-subhead${subtype === UNSORTED || subtype === DONE_GROUP ? ' unsorted' : ''}`}>
                         {subtype}
                         <span className="count">
-                          {subtype === DONE_GROUP
-                            ? `${list.length}건`
-                            : (() => {
-                                const t = subtypeTally(items, subtypesOf(category), subtype)
-                                return t.total === 0 ? '할 일 없음' : `${t.total}건 중 ${t.done}건 처리`
-                              })()}
+                          {list.length}
                           {list.some((i) => i.activeSec > 0) && ` · ${fmtShort(list.reduce((t, i) => t + i.activeSec, 0))}`}
+                          {list.length === 0 && ' · 진행 중 없음'}
                         </span>
                       </div>
                     )}
