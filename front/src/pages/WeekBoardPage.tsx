@@ -496,6 +496,11 @@ function AddTodo({ category, week, showWeek }: { category: string | null; week: 
   const create = useWorkMutation((t: string) =>
     api.createWorkItem({ title: t, category: category ?? undefined, weekKey: week, status: 'PLANNED', priority: 'MEDIUM' }),
   )
+  // 한글 입력 중 Enter: 브라우저에 따라 조합이 끝난 뒤 Enter 가 다시 오지 않아 저장이 안 되던 것 —
+  // 조합 중에 누른 Enter 는 기억했다가 조합이 끝나면 저장하고, 같은 글이 곧바로 두 번 들어오면 한 번만
+  const composing = useRef(false)
+  const enterWhileComposing = useRef(false)
+  const lastSent = useRef<{ t: string; at: number }>({ t: '', at: 0 })
   if (!editing) {
     return (
       <button className="t-add" onClick={() => setEditing(true)}>
@@ -504,13 +509,16 @@ function AddTodo({ category, week, showWeek }: { category: string | null; week: 
       </button>
     )
   }
-  const submit = () => {
-    const t = title.trim()
+  const submit = (raw: string) => {
+    const t = raw.trim()
     if (!t) {
       setEditing(false)
       return
     }
-    create.mutate(t, { onSuccess: () => setTitle('') })
+    if (lastSent.current.t === t && Date.now() - lastSent.current.at < 800) return
+    lastSent.current = { t, at: Date.now() }
+    setTitle('') // 바로 비워 이어서 입력, 실패하면 되돌린다
+    create.mutate(t, { onError: () => setTitle(t) })
   }
   return (
     <div className="t-item adding">
@@ -523,11 +531,22 @@ function AddTodo({ category, week, showWeek }: { category: string | null; week: 
           autoFocus
           placeholder="할 일 입력 후 Enter — 이어서 계속 입력할 수 있어요 (Esc 닫기)"
           value={title}
-          disabled={create.isPending}
           onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => !title.trim() && setEditing(false)}
+          onBlur={() => !title.trim() && !create.isPending && setEditing(false)}
+          onCompositionStart={() => (composing.current = true)}
+          onCompositionEnd={(e) => {
+            composing.current = false
+            if (enterWhileComposing.current) {
+              enterWhileComposing.current = false
+              submit(e.currentTarget.value)
+            }
+          }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.nativeEvent.isComposing) submit()
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              if (e.nativeEvent.isComposing || composing.current) enterWhileComposing.current = true
+              else submit(e.currentTarget.value)
+            }
             if (e.key === 'Escape') {
               setTitle('')
               setEditing(false)
