@@ -192,12 +192,9 @@ public class WorkTextService {
         return "commits".equals(part.def().source()) ? commitDraft(part, p) : itemDraft(part, board);
     }
 
-    /** 한 줄 최대 글자 수(띄어쓰기 포함) — 메신저·메일에서 줄바꿈 없이 읽히게 */
-    static final int LINE_MAX = 30;
-
     /**
-     * 전체 업무 내용 초안 — «금주 실적» 양식. 카테고리 «■ 이름»(건수 없음), 할 일 하나당 « o 업무 (기간)» 한 줄,
-     * 진행 중이면 기간 괄호에 «, 진행중». 세부 분류 순서로 놓되 분류 줄은 쓰지 않는다. 한 줄은 30자 안으로 자른다
+     * 전체 업무 내용 초안 — «금주 실적» 양식. 카테고리 «■ 이름 — N건»(0건 분류는 괄호), 세부 분류가 있으면 분류 줄 «- 분류 N건 (기간)»
+     * 아래 «· 업무» 한 줄씩, 없으면 업무마다 «- 업무 (기간) — 완료|진행중». 세부·요청자는 넣지 않는다(짧게)
      */
     private String fullDraft(Board board) {
         LocalDate from = LocalDate.parse(board.from());
@@ -207,29 +204,42 @@ public class WorkTextService {
             if (g.getValue().isEmpty()) {
                 continue;
             }
-            sb.append("\n■ ").append(g.getKey()).append('\n');
-            for (List<ItemView> items : bySubtype(g.getValue(), subtypes.get(g.getKey())).values()) {
-                for (ItemView it : items) {
-                    String per = period(it);
-                    boolean open = !"DONE".equals(it.status());
-                    String tail = per.isEmpty() ? (open ? " (진행중)" : "") : " (" + per + (open ? ", 진행중" : "") + ")";
-                    sb.append(line(reportName(it), tail)).append('\n');
+            List<String> order = subtypes.get(g.getKey());
+            Map<String, List<ItemView>> by = bySubtype(g.getValue(), order);
+            // 건수는 세부 분류가 있는 카테고리만(분류별로 세는 카테고리), 나머지는 이름만
+            boolean counted = order != null && !order.isEmpty();
+            sb.append("\n■ ").append(g.getKey());
+            if (counted) {
+                sb.append(" — ").append(g.getValue().size()).append("건 (").append(doneOpen(g.getValue())).append(')');
+            }
+            List<String> zero = by.entrySet().stream().filter(e -> e.getKey() != null && e.getValue().isEmpty())
+                    .map(e -> e.getKey() + " 0건").toList();
+            if (!zero.isEmpty()) {
+                sb.append(" (").append(String.join(", ", zero)).append(')');
+            }
+            sb.append('\n');
+            for (Map.Entry<String, List<ItemView>> e : by.entrySet()) {
+                if (e.getKey() == null) {
+                    for (ItemView it : e.getValue()) {
+                        String per = period(it);
+                        sb.append(" o ").append(reportName(it)).append(per.isEmpty() ? "" : " (" + per + ")")
+                                .append(" — ").append("DONE".equals(it.status()) ? "완료" : "진행중").append('\n');
+                    }
+                    continue;
+                }
+                if (e.getValue().isEmpty()) {
+                    continue;
+                }
+                String per = period(e.getValue());
+                sb.append(" o ").append(e.getKey()).append(' ').append(e.getValue().size()).append("건")
+                        .append(per.isEmpty() ? "" : " (" + per + ")").append(" — ").append(doneOpen(e.getValue())).append('\n');
+                for (ItemView it : e.getValue()) {
+                    sb.append("   · ").append(reportName(it)).append('\n');
                 }
             }
         }
         // 이슈는 사람이 적는 칸 — 비워 둔다
         return sb.toString().stripTrailing() + "\n\n[이슈]\n o \n";
-    }
-
-    /** « o 이름(괄호)» 한 줄 — 30자를 넘으면 이름을 줄이고 «…» */
-    static String line(String name, String tail) {
-        String head = " o ";
-        int room = LINE_MAX - head.length() - tail.length();
-        String n = name.strip();
-        if (n.length() > room) {
-            n = n.substring(0, Math.max(1, room - 1)).stripTrailing() + "…";
-        }
-        return head + n + tail;
     }
 
     /** «완료 2 · 진행 1» — 완료만이면 «완료 2», 진행만이면 «진행 1» */
@@ -299,7 +309,7 @@ public class WorkTextService {
     }
 
     /**
-     * 차주 계획 초안 — 전체 업무 내용과 같은 모양: «■ 카테고리» 아래 할 일 하나당 « o 업무 (~마감)» 한 줄(30자 안).
+     * 차주 계획 초안 — 전체 업무 내용과 같은 모양으로 카테고리별 할 일 이름(마감·보드 표시).
      * 짧은 요약 갈래(최대 줄 수 6 이하)면 "- 할 일" 몇 줄, 해당 할 일이 없으면 빈칸
      */
     private String nextDraft(Part part, Board board) {
@@ -324,10 +334,24 @@ public class WorkTextService {
                 continue;
             }
             any = true;
-            sb.append("\n■ ").append(g.getKey()).append('\n');
-            for (List<ItemView> items : bySubtype(g.getValue(), settings.subtypes().get(g.getKey())).values()) {
-                for (ItemView it : items) {
-                    sb.append(line(reportName(it), it.dueDate() == null ? "" : " (~" + md(it.dueDate()) + ")")).append('\n');
+            List<String> nextOrder = settings.subtypes().get(g.getKey());
+            sb.append("\n■ ").append(g.getKey());
+            if (nextOrder != null && !nextOrder.isEmpty()) {
+                sb.append(" — ").append(g.getValue().size()).append("건");
+            }
+            sb.append('\n');
+            for (Map.Entry<String, List<ItemView>> e : bySubtype(g.getValue(), nextOrder).entrySet()) {
+                if (e.getKey() != null && e.getValue().isEmpty()) {
+                    continue;
+                }
+                String pad = "";
+                if (e.getKey() != null) {
+                    sb.append(" o ").append(e.getKey()).append(' ').append(e.getValue().size()).append("건\n");
+                    pad = "  ";
+                }
+                for (ItemView it : e.getValue()) {
+                    sb.append(pad).append(e.getKey() == null ? " o " : " · ").append(reportName(it))
+                            .append(it.dueDate() == null ? "" : " (~" + md(it.dueDate()) + ")").append('\n');
                 }
             }
         }
@@ -724,10 +748,10 @@ public class WorkTextService {
             return part.def().guide();
         }
         if (part.next()) {
-            return "입력의 [차주 계획 후보] 중 \"(" + part.title() + " 해당)\" 표시가 있는 것으로 다음 주에 할 일을 한 줄씩. 첫 줄 \"[" + part.title()
-                    + "] (M/D~M/D)\"(다음 주 월~금), 카테고리마다 빈 줄 뒤 \"■ 카테고리\"(건수 없이). 할 일 하나당 \" o 업무명 (~M/D)\" 한 줄(마감이 없으면 괄호 없이), "
-                    + "세부 분류 줄·하위 줄은 쓰지 않는다. 세부 분류가 있는 카테고리는 할 일을 묶지 않는다. 한 줄은 띄어쓰기 포함 30자 이하. "
-                    + "완료된 일·이번 주 실적은 쓰지 않는다. 해당하는 할 일이 하나도 없으면 아무것도 쓰지 않는다(빈칸)";
+            return "입력의 [차주 계획 후보] 중 \"(" + part.title() + " 해당)\" 표시가 있는 것으로 다음 주에 할 일을 간결하게. 첫 줄 \"[" + part.title()
+                    + "] (M/D~M/D)\"(다음 주 월~금), 카테고리마다 빈 줄 뒤 \"■ 카테고리\"(세부 분류가 있는 카테고리만 \"■ 카테고리 — N건\"). 업무는 \" o 업무명 (~M/D)\"(마감이 없으면 괄호 없이), "
+                    + "그 아래 \"   · \" 0~1줄로 이어서 할 일(\"~ 예정\" 체). 세부 분류가 있는 카테고리는 \" o 분류 N건\" 아래 \"   · 업무명 (~M/D)\"로 묶고, 할 일 없는 분류는 쓰지 않는다. "
+                    + "비슷한 작은 일은 한 줄로 묶는다. 한 줄은 띄어쓰기 포함 60자 이내(줄바꿈이 생기지 않게, 길면 다음 \"   · \" 줄로 나눈다). 완료된 일·이번 주 실적은 쓰지 않는다. 해당하는 할 일이 하나도 없으면 아무것도 쓰지 않는다(빈칸)";
         }
         if ("commits".equals(part.def().source())) {
             String repos = part.def().repos().isEmpty() ? "관리하는 저장소" : String.join(", ", part.def().repos());
