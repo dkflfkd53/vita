@@ -337,18 +337,23 @@ public class WorkTextService {
 
     /**
      * 차주 계획 후보 — 다음 주 보드에 넣은 할 일, 이번 주 할 일 중 완료·보류가 아닌 것(이번 주에 계획했거나 작업한 것),
-     * 마감이 다음 주인 할 일. 카테고리 순
+     * 마감이 다음 주인 할 일. 이번 주 마감인 할 일은 안 끝났어도 빼고(금주 실적에 진행중으로), 다음 주 보드에 직접 넣은 것만 남긴다. 카테고리 순
      */
     List<ItemView> nextItems(Board board) {
         LocalDate nextFrom = LocalDate.parse(board.from()).plusDays(7);
         Board next = work.board(Period.weekKey(nextFrom));
         Map<Long, ItemView> out = new LinkedHashMap<>();
         next.items().stream().filter(i -> i.planned() && !"DONE".equals(i.status())).forEach(i -> out.put(i.id(), i));
+        LocalDate thisFrom = LocalDate.parse(board.from());
         for (ItemView i : board.items()) {
             boolean open = !"DONE".equals(i.status()) && !"ON_HOLD".equals(i.status());
             boolean dueNext = i.dueDate() != null && !LocalDate.parse(i.dueDate()).isBefore(nextFrom)
                     && !LocalDate.parse(i.dueDate()).isAfter(nextFrom.plusDays(6));
-            if (open && (i.planned() || i.activeSec() > 0 || dueNext)) {
+            // 이번 주 마감인 할 일은 아직 안 끝났어도 이번 주에 끝낼 일 — 금주 실적(진행중)에만 두고 차주 계획엔 넣지 않는다.
+            // 다음 주 보드에 직접 넣은 것(위)과 지난주 이전 마감을 넘긴 것은 그대로 차주 계획
+            boolean dueThisWeek = i.dueDate() != null && !LocalDate.parse(i.dueDate()).isBefore(thisFrom)
+                    && LocalDate.parse(i.dueDate()).isBefore(nextFrom);
+            if (open && !dueThisWeek && (i.planned() || i.activeSec() > 0 || dueNext)) {
                 out.putIfAbsent(i.id(), i);
             }
         }
@@ -601,7 +606,7 @@ public class WorkTextService {
             }
         }
         if (parts().stream().anyMatch(Part::next)) {
-            in.append("\n[차주 계획 후보] (다음 주 보드에 넣은 할 일 · 이번 주에 못 끝낸 할 일 · 다음 주 마감)\n");
+            in.append("\n[차주 계획 후보] (다음 주 보드에 넣은 할 일 · 이번 주에 못 끝낸 할 일(이번 주 마감은 제외) · 다음 주 마감)\n");
             List<ItemView> next = nextItems(board);
             if (next.isEmpty()) {
                 in.append("(없음)\n");
