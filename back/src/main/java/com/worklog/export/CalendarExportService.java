@@ -55,6 +55,7 @@ public class CalendarExportService {
     private static final long GAP_MS = 15 * 60_000L;
     /** 이보다 짧은 덩어리는 질문 하나 하고 끝난 것 — 캘린더를 어지럽혀 뺀다 */
     private static final long MIN_BLOCK_MS = 5 * 60_000L;
+    static final long DEPLOY_MS = 10 * 60_000L;
     /** 끝나지 않은 도구 호출 등 이상치 상한 */
     private static final long TOOL_CAP_MS = 60 * 60_000L;
     private static final DateTimeFormatter UTC = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(java.time.ZoneOffset.UTC);
@@ -161,12 +162,10 @@ public class CalendarExportService {
             if (end == null) {
                 continue;
             }
+            // 배포는 시작 시각부터 10분짜리 일정으로(실제 걸린 시간과 무관하게 캘린더에서 보이게)
             long start = end - (e.duration() == null ? 0 : Math.round(e.duration() * 1000));
-            if (end - start < MIN_BLOCK_MS) {
-                start = end - MIN_BLOCK_MS;
-            }
             boolean ok = "success".equals(e.status());
-            result.add(new TimedEvent("vita-dep-" + e.project().hashCode() + "-" + e.jobId() + "@vita", start, end,
+            result.add(new TimedEvent("vita-dep-" + e.project().hashCode() + "-" + e.jobId() + "@vita", start, start + DEPLOY_MS,
                     e.label() + (ok ? " ✓" : " ✕"), e.shortName() + " " + (e.sha() == null ? "" : e.sha()) + (ok ? " 성공" : " 실패(" + e.status() + ")")
                             + (e.webUrl() == null ? "" : "\nGitLab: " + e.webUrl()), e.webUrl()));
         }
