@@ -1562,3 +1562,10 @@ a.deploy-ev:hover { color: var(--text); }
 
 /* 설정 체크박스 한 줄 */
 .st-check { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+
+/* 할 일 시간(회의 등) */
+.time-range { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.time-range input { font: inherit; font-size: 13px; padding: 2px 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+.seg.meeting-seg { background: color-mix(in srgb, var(--c-purple, #8b5cf6) 14%, transparent); color: var(--text); text-decoration: none; }
+.seg.meeting-seg .seg-h { font-variant-numeric: tabular-nums; margin-right: 4px; }
+.cal-meet { background: color-mix(in srgb, var(--c-purple, #8b5cf6) 14%, transparent); }

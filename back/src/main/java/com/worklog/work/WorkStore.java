@@ -23,7 +23,7 @@ import lombok.RequiredArgsConstructor;
 public class WorkStore {
 
     private static final String ITEM_COLUMNS =
-            "id, title, category, priority, status, due_date, requester, progress, created_at, updated_at, done_at, memo, subtype";
+            "id, title, category, priority, status, due_date, requester, progress, created_at, updated_at, done_at, memo, subtype, start_at, end_at";
 
     private final JdbcClient jdbc;
 
@@ -41,11 +41,11 @@ public class WorkStore {
         KeyHolder keys = new GeneratedKeyHolder();
         jdbc.sql("""
                 INSERT INTO work_item (title, category, priority, status, due_date, requester, progress,
-                                       created_at, updated_at, done_at, memo, subtype)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                       created_at, updated_at, done_at, memo, subtype, start_at, end_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """).params(draft.title(), draft.category(), draft.priority(), draft.status(), draft.dueDate(),
                 draft.requester(), draft.progress(), now, now, "DONE".equals(draft.status()) ? now : null, draft.memo(),
-                draft.subtype())
+                draft.subtype(), draft.startAt(), draft.endAt())
                 .update(keys);
         return keys.getKey().longValue();
     }
@@ -208,10 +208,18 @@ public class WorkStore {
         jdbc.sql("DELETE FROM session_pin WHERE session_id = ?").param(sessionId).update();
     }
 
+    public List<com.worklog.work.WorkViews.TimedItem> timedItems(String from, String to) {
+        return jdbc.sql("""
+                SELECT id, title, category, status, substr(start_at, 1, 10), start_at, end_at FROM work_item
+                WHERE start_at IS NOT NULL AND substr(start_at, 1, 10) BETWEEN ? AND ? ORDER BY start_at
+                """).params(from, to).query((rs, i) -> new com.worklog.work.WorkViews.TimedItem(rs.getLong(1), rs.getString(2),
+                rs.getString(3), rs.getString(4), rs.getString(5), rs.getString(6), rs.getString(7))).list();
+    }
+
     private static WorkItem mapItem(ResultSet rs, int i) throws SQLException {
         return new WorkItem(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5),
                 rs.getString(6), rs.getString(7), rs.getInt(8), rs.getString(9), rs.getString(10), rs.getString(11),
-                rs.getString(12), rs.getString(13));
+                rs.getString(12), rs.getString(13), rs.getString(14), rs.getString(15));
     }
 
     private static Link mapLink(ResultSet rs, int i) throws SQLException {
@@ -222,7 +230,7 @@ public class WorkStore {
 
     public record WorkItem(long id, String title, String category, String priority, String status, String dueDate,
                            String requester, int progress, String createdAt, String updatedAt, String doneAt,
-                           String memo, String subtype) {
+                           String memo, String subtype, String startAt, String endAt) {
     }
 
     public record Link(String sessionId, String day, Long workItemId, String source) {

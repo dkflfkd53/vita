@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
-import { useNavigate } from 'react-router-dom'
-import type { CalendarDay, DeployEvent } from '../api/types'
+import { useNavigate, Link } from 'react-router-dom'
+import type { CalendarDay, DeployEvent, TimedItem } from '../api/types'
 import { hiddenPerDay, layoutWeek, type Segment } from '../lib/calendarLayout'
 import { addDays, fmtDuration, fmtShort, fmtUsd, itemColor, parseYmd, weekKey, ymd } from '../lib/format'
 import { Icon } from './Icon'
@@ -100,6 +100,8 @@ export function WeekView({
   const segments = useMemo(() => layoutWeek(days, byDay, prevWorkday(days[0]), nextWorkday(days[days.length - 1])), [days, byDay])
   // CI/CD 배포 기록 — 그날 머리에 «배포 n»
   const deploys = useQuery({ queryKey: ['deploys', days[0], days[days.length - 1]], queryFn: () => api.deploys(days[0], days[days.length - 1]) })
+  // 시간을 넣은 할 일(회의 등) — 세션이 없어도 그 시각으로
+  const timed = useQuery({ queryKey: ['timed-items', days[0], days[days.length - 1]], queryFn: () => api.timedItems(days[0], days[days.length - 1]) })
   const lanes = Math.max(3, ...segments.map((s) => s.lane + 1))
   return (
     <div className="cal wk" style={{ gridTemplateRows: `56px repeat(${lanes}, 30px) auto minmax(120px, auto)` }}>
@@ -131,8 +133,12 @@ export function WeekView({
       ))}
       {days.map((day, i) => {
         const list = (deploys.data ?? []).filter((e) => e.day === day)
-        return list.length === 0 ? null : (
+        const meets = (timed.data ?? []).filter((t) => t.day === day)
+        return list.length === 0 && meets.length === 0 ? null : (
           <div key={`d-${day}`} className="wk-deploys" style={{ gridColumn: i + 1, gridRow: lanes + 2 }}>
+            {meets.map((t) => (
+              <MeetingBar key={t.id} item={t} />
+            ))}
             {groupByLabel(list).map(([label, evs]) => (
               <DeployBar key={label} label={label} events={evs} />
             ))}
@@ -170,6 +176,22 @@ function groupByLabel(list: DeployEvent[]): [string, DeployEvent[]][] {
   const m = new Map<string, DeployEvent[]>()
   list.forEach((e) => m.set(e.label, [...(m.get(e.label) ?? []), e]))
   return [...m.entries()]
+}
+
+/** 시간을 넣은 할 일 막대 — «14:00 제목», 누르면 할 일 상세 */
+function MeetingBar({ item }: { item: TimedItem }) {
+  const hm = (t: string | null) => (t ? t.slice(11, 16) : '')
+  return (
+    <Link
+      className="seg meeting-seg"
+      to={`/work/${item.id}`}
+      onClick={(ev) => ev.stopPropagation()}
+      title={`${item.title}\n${hm(item.startAt)}${item.endAt ? `~${hm(item.endAt)}` : ''}${item.category ? ` · ${item.category}` : ''}`}
+    >
+      <span className="seg-h">{hm(item.startAt)}</span>
+      <span className="seg-title">{item.title}</span>
+    </Link>
+  )
 }
 
 /** 그날의 배포 막대 하나 — 하나라도 실패면 ✕, 자세한 건 툴팁·날짜 상세. 누르면 마지막 GitLab 잡 */
@@ -217,6 +239,7 @@ function MonthWeek({
   const segments = useMemo(() => layoutWeek(days, byDay, prevWorkday(days[0]), nextWorkday(days[days.length - 1])), [days, byDay])
   const hidden = hiddenPerDay(segments, MONTH_LANES, days.length)
   const deploys = useQuery({ queryKey: ['deploys', days[0], days[days.length - 1]], queryFn: () => api.deploys(days[0], days[days.length - 1]) })
+  const timed = useQuery({ queryKey: ['timed-items', days[0], days[days.length - 1]], queryFn: () => api.timedItems(days[0], days[days.length - 1]) })
   return (
     <div className="mrow" style={{ gridTemplateRows: `30px repeat(${MONTH_LANES}, 23px) minmax(26px, 1fr)` }}>
       {days.map((day, i) => (
@@ -247,6 +270,14 @@ function MonthWeek({
               return list.length > 0 ? (
                 <span className="cal-deploy" title={list.map((e) => `${e.label} ${e.shortName} ${e.sha ?? ''} ${e.status === 'success' ? '성공' : '실패'}`).join('\n')}>
                   배포{list.some((e) => e.status !== 'success') ? ' ✕' : ''}
+                </span>
+              ) : null
+            })()}
+            {(() => {
+              const meets = (timed.data ?? []).filter((t) => t.day === day)
+              return meets.length > 0 ? (
+                <span className="cal-deploy cal-meet" title={meets.map((t) => `${t.startAt.slice(11, 16)} ${t.title}`).join('\n')}>
+                  회의 {meets.length}
                 </span>
               ) : null
             })()}

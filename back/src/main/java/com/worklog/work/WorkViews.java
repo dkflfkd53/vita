@@ -18,7 +18,7 @@ public final class WorkViews {
     public record ItemView(long id, String title, String category, String subtype, String priority, String status, String dueDate,
                            String createdAt, String updatedAt, String doneAt,
                            String memo, boolean planned, long activeSec, List<LinkedDay> sessionDays, double costUsd,
-                           List<ItemSession> sessions, List<String> weeks) {
+                           List<ItemSession> sessions, List<String> weeks, String startAt, String endAt) {
     }
 
     /**
@@ -73,9 +73,13 @@ public final class WorkViews {
                            String lastLinkedDay, int itemCount, boolean routine) {
     }
 
-    /** subtype: null = 그대로, "" = 비움 */
+    /** 시간을 정한 할 일 하나 — day = 시작 날짜 */
+    public record TimedItem(long id, String title, String category, String status, String day, String startAt, String endAt) {
+    }
+
+    /** subtype: null = 그대로, "" = 비움. startAt·endAt: 회의처럼 시간이 정해진 일(현지 시각 "2026-11-26T14:00"), "" = 비움 */
     public record WorkItemRequest(String title, String category, String priority, String status, String dueDate,
-                                  String memo, String weekKey, String subtype) {
+                                  String memo, String weekKey, String subtype, String startAt, String endAt) {
     }
 
     /** days 의 연결을 사용자가 정한다. workItemId null = 계획 외로 확정. pin = 앞으로도 이 세션은 이 업무 */

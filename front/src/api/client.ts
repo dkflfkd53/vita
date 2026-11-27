@@ -40,6 +40,7 @@ import type {
   Outcomes,
   UpdateStatus,
   DeployEvent,
+  TimedItem,
   DeployConfig,
 } from './types'
 
@@ -128,6 +129,7 @@ export const api = {
   metricDefs: () => request<MetricDef[]>('/observer/metric-defs'),
   insightPending: () => request<InsightPending>('/observer/insights/pending'),
   deploys: (from: string, to: string) => request<DeployEvent[]>(`/deploys?from=${from}&to=${to}`),
+  timedItems: (from: string, to: string) => request<TimedItem[]>(`/work-items/timed?from=${from}&to=${to}`),
   deployConfig: () => request<{ config: DeployConfig; lastError: string | null; lastSyncAt: string | null }>('/deploys/config'),
   saveDeployConfig: (c: DeployConfig) =>
     request<{ added: number; error: string | null; syncedAt: string | null }>('/deploys/config', { method: 'PUT', body: JSON.stringify(c) }),

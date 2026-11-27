@@ -7,7 +7,7 @@ import type { Board, BoardKind, UnassignedSession, WorkItem, WorkItemPatch, Work
 import { Icon } from '../components/Icon'
 import { ErrorBox, Loading, ProjectLabel } from '../components/common'
 import { UsageButton } from '../components/UsageBreakdown'
-import { CategorySelect, DueDateInput, MemoEditor, PRIORITY, PrioritySelect, STATUS, StatusIcon, SubtypeSelect, TextCell, dDay } from '../components/workFields'
+import { CategorySelect, DueDateInput, MemoEditor, PRIORITY, PrioritySelect, STATUS, StatusIcon, SubtypeSelect, TextCell, TimeRangeInput, dDay, timeRangeText } from '../components/workFields'
 import { MonthOverview } from '../components/MonthOverview'
 import { WorkTextDialog } from '../components/WorkTextDialog'
 import { addDays, fmtShort, fmtUsd, monthKey, monthWeek, parseYmd, tint, weekKey, weekLabel, weekday, ymd } from '../lib/format'
@@ -420,6 +420,10 @@ function TodoItem({
                 <span>마감</span>
                 <DueDateInput value={item.dueDate} status={item.status} onSave={save} />
               </div>
+              <div className="t-prop">
+                <span>시간</span>
+                <TimeRangeInput startAt={item.startAt} endAt={item.endAt} show={item.category === '회의'} onSave={save} />
+              </div>
             </div>
           </div>
           <TodoSessions item={item} board={board} />
@@ -456,6 +460,11 @@ function TodoItem({
         )}
         <span className="t-right">
           {item.status === 'ON_HOLD' && <span className="t-hold">보류</span>}
+          {item.startAt && (
+            <span className="t-due ok" title="회의·일정 시간">
+              <Icon name="clock" size={12} /> {timeRangeText(item.startAt, item.endAt)}
+            </span>
+          )}
           {item.dueDate && (
             <span className={`t-due ${due?.tone ?? 'ok'}`} title={due ? `마감 ${due.text}` : '마감'}>
               <Icon name="calendar" size={12} /> {fmtDay(item.dueDate)}

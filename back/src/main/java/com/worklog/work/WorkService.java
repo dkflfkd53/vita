@@ -284,7 +284,8 @@ public class WorkService {
                 req.priority() == null ? "MEDIUM" : check(req.priority(), PRIORITIES, "우선순위"),
                 status, date(req.dueDate()), null,
                 0,
-                null, null, null, memo(req.memo()), subtype(category, req.subtype()));
+                null, null, null, memo(req.memo()), subtype(category, req.subtype()), time(req.startAt()), time(req.endAt()));
+        checkTimes(draft.startAt(), draft.endAt());
         long id = store.createItem(draft);
         if (draft.category() != null) {
             store.addCategory(draft.category());
@@ -329,6 +330,13 @@ public class WorkService {
         if (req.memo() != null) {
             cols.put("memo", memo(req.memo()));
         }
+        if (req.startAt() != null || req.endAt() != null) {
+            String start = req.startAt() != null ? time(req.startAt()) : current.startAt();
+            String end = req.endAt() != null ? time(req.endAt()) : current.endAt();
+            checkTimes(start, end);
+            cols.put("start_at", start);
+            cols.put("end_at", end);
+        }
         if (req.status() != null) {
             String status = check(req.status(), STATUSES, "상태");
             cols.put("status", status);
@@ -339,6 +347,28 @@ public class WorkService {
             }
         }
         store.updateItem(id, cols);
+    }
+
+    public List<WorkViews.TimedItem> timedItems(String from, String to) {
+        return store.timedItems(from, to);
+    }
+
+    /** "2026-11-26T14:00" 꼴만 받는다. "" = 비움 */
+    static String time(String v) {
+        if (v == null || v.isBlank()) {
+            return null;
+        }
+        try {
+            return java.time.LocalDateTime.parse(v.strip()).withSecond(0).withNano(0).toString();
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new IllegalArgumentException("시간 형식이 아님: " + v);
+        }
+    }
+
+    static void checkTimes(String start, String end) {
+        if (start != null && end != null && !java.time.LocalDateTime.parse(end).isAfter(java.time.LocalDateTime.parse(start))) {
+            throw new IllegalArgumentException("끝 시간이 시작보다 늦어야 해요");
+        }
     }
 
     public void delete(long id) {
@@ -409,7 +439,7 @@ public class WorkService {
         var session = queryStore.session(req.sessionId())
                 .orElseThrow(() -> new IllegalArgumentException("세션이 없음"));
         long id = create(new WorkItemRequest(session.displayTitle(), guessCategory(session.project()), "MEDIUM",
-                "IN_PROGRESS", null, null, req.weekKey(), null));
+                "IN_PROGRESS", null, null, req.weekKey(), null, null, null));
         if (req.days() != null && !req.days().isEmpty()) {
             link(new LinkRequest(req.sessionId(), req.days(), id, false));
         }
@@ -542,7 +572,7 @@ public class WorkService {
                 w.createdAt(), w.updatedAt(), w.doneAt(), w.memo(), planned,
                 days.stream().mapToLong(LinkedDay::activeSec).sum(), days,
                 days.stream().mapToDouble(LinkedDay::costUsd).sum(),
-                ctx == null ? List.of() : ctx.sessionsOf(w.id(), days), weeks);
+                ctx == null ? List.of() : ctx.sessionsOf(w.id(), days), weeks, w.startAt(), w.endAt());
     }
 
     // ───────── 세션 직접 연결 ─────────

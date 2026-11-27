@@ -331,6 +331,9 @@ export interface WorkItem {
   sessions: ItemSession[]
   /** 이 할 일이 계획된 주들(2026-W43 …) */
   weeks: string[]
+  /** 회의처럼 시간이 정해진 일 — 현지 시각 "2026-11-26T14:00" */
+  startAt: string | null
+  endAt: string | null
 }
 
 /** 할 일에 붙은 세션. pinned = 직접 연결(앞으로의 작업도 이 할 일로) */
@@ -431,6 +434,19 @@ export interface WorkItemPatch {
   weekKey?: string
   /** '' = 비움 */
   subtype?: string
+  /** "2026-11-26T14:00", '' = 비움 */
+  startAt?: string
+  endAt?: string
+}
+
+export interface TimedItem {
+  id: number
+  title: string
+  category: string | null
+  status: WorkStatus
+  day: string
+  startAt: string
+  endAt: string | null
 }
 
 // ───────── 주간 업무 내용 (report.WorkTextService) ─────────

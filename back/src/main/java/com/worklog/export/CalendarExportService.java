@@ -157,6 +157,20 @@ public class CalendarExportService {
                 result.add(new TimedEvent("vita-blk-" + k + "-" + b.from + "@vita", b.from, b.to, title, desc.toString(), APP + "/sessions/" + k));
             }
         });
+        // 시간을 넣은 할 일(회의 등) — 세션이 없어도 그 시각 그대로
+        java.time.ZoneId zone = java.time.ZoneId.systemDefault();
+        jdbc.sql("""
+                SELECT id, title, category, start_at, end_at, memo FROM work_item
+                WHERE start_at IS NOT NULL AND end_at IS NOT NULL AND substr(start_at, 1, 10) BETWEEN ? AND ?
+                """).params(from.toString(), to.toString()).query((rs, i) -> {
+            long s0 = java.time.LocalDateTime.parse(rs.getString(4)).atZone(zone).toInstant().toEpochMilli();
+            long e0 = java.time.LocalDateTime.parse(rs.getString(5)).atZone(zone).toInstant().toEpochMilli();
+            String memo = rs.getString(6);
+            String desc = (rs.getString(3) == null ? "" : rs.getString(3) + "\n")
+                    + (memo == null || memo.isBlank() ? "" : memo.strip() + "\n")
+                    + "\nVita에서 보기: " + APP + "/work/" + rs.getLong(1);
+            return new TimedEvent("vita-item-" + rs.getLong(1) + "@vita", s0, e0, rs.getString(2), desc, APP + "/work/" + rs.getLong(1));
+        }).list().forEach(result::add);
         for (Event e : deploy.events(from.toString(), to.toString())) {
             Long end = ms(e.finishedAt());
             if (end == null) {

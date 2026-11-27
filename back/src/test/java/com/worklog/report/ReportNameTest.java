@@ -17,7 +17,7 @@ class ReportNameTest {
     }
 
     private static ItemView item(String title, String status, String due, String doneAt, List<ItemSession> sessions) {
-        return new ItemView(1, title, "앱", null, "MEDIUM", status, due, null, null, doneAt, null, true, 0, List.of(), 0, sessions, List.of());
+        return new ItemView(1, title, "앱", null, "MEDIUM", status, due, null, null, doneAt, null, true, 0, List.of(), 0, sessions, List.of(), null, null);
     }
 
     @Test

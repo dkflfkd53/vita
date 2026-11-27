@@ -196,6 +196,62 @@ export function DueDateInput({ value, status, onSave }: { value: string | null; 
 }
 
 
+/** "14:00" 처럼 — 시간 문자열의 HH:MM */
+export function hm(t: string | null | undefined) {
+  return t ? t.slice(11, 16) : ''
+}
+
+/** 할 일 시간(회의 등) 한 줄: «11/26 (목) 14:00~15:30» */
+export function timeRangeText(startAt: string | null, endAt: string | null) {
+  if (!startAt) return ''
+  const day = startAt.slice(0, 10)
+  return `${parseYmd(day).getMonth() + 1}/${parseYmd(day).getDate()} (${weekday(day)}) ${hm(startAt)}${endAt ? `~${hm(endAt)}` : ''}`
+}
+
+/**
+ * 회의처럼 시간이 정해진 일 — 날짜·시작·끝. 세션이 없어도 세션 캘린더·구글 캘린더에 그 시각으로 들어간다.
+ * show 가 false 면(회의가 아닌데 시간도 없음) «+ 시간» 버튼만
+ */
+export function TimeRangeInput({ startAt, endAt, show, onSave }: { startAt: string | null; endAt: string | null; show: boolean; onSave: Save }) {
+  const [open, setOpen] = useState(show || !!startAt)
+  const [day, setDay] = useState(startAt?.slice(0, 10) ?? today())
+  const [from, setFrom] = useState(hm(startAt) || '10:00')
+  const [to, setTo] = useState(hm(endAt) || '11:00')
+  useEffect(() => {
+    if (startAt) {
+      setDay(startAt.slice(0, 10))
+      setFrom(hm(startAt))
+    }
+    if (endAt) setTo(hm(endAt))
+  }, [startAt, endAt])
+  if (!open) {
+    return (
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>
+        + 시간
+      </button>
+    )
+  }
+  const commit = (d = day, a = from, b = to) => {
+    if (!d || !a || !b) return
+    if (b <= a) return
+    onSave({ startAt: `${d}T${a}`, endAt: `${d}T${b}` })
+  }
+  return (
+    <div className="time-range" onClick={(e) => e.stopPropagation()}>
+      <input type="date" value={day} onChange={(e) => { setDay(e.target.value); commit(e.target.value) }} />
+      <input type="time" value={from} step={600} onChange={(e) => { setFrom(e.target.value); commit(day, e.target.value) }} />
+      <span className="subtle">~</span>
+      <input type="time" value={to} step={600} onChange={(e) => { setTo(e.target.value); commit(day, from, e.target.value) }} />
+      {to <= from && <span className="bad">끝이 시작보다 늦어야 해요</span>}
+      {startAt && (
+        <button type="button" className="due-clear" onClick={() => { onSave({ startAt: '', endAt: '' }); setOpen(show) }} aria-label="시간 지우기">
+          ×
+        </button>
+      )}
+    </div>
+  )
+}
+
 export function itemPatchSaver(item: WorkItem, save: (id: number, patch: WorkItemPatch) => void): Save {
   return (patch) => save(item.id, patch)
 }

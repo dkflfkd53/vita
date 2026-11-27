@@ -106,6 +106,12 @@ public class WorkController {
         return work.taskWork();
     }
 
+    /** 시간을 넣은 할 일(회의 등) — 세션 캘린더에 그 시각으로 */
+    @GetMapping("/work-items/timed")
+    public List<WorkViews.TimedItem> timed(@RequestParam String from, @RequestParam String to) {
+        return work.timedItems(from, to);
+    }
+
     @PostMapping("/work-items")
     public Map<String, Long> create(@RequestBody WorkItemRequest req) {
         return Map.of("id", work.create(req));

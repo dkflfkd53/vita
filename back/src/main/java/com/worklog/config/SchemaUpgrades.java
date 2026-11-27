@@ -21,6 +21,8 @@ public class SchemaUpgrades {
     @PostConstruct
     void upgrade() {
         addColumn("work_item", "memo", "TEXT");
+        addColumn("work_item", "start_at", "TEXT");
+        addColumn("work_item", "end_at", "TEXT");
         addColumn("category", "color", "TEXT");
         // 카테고리 안의 세부 분류(JSON 배열, 예: ["기능개발","오류"]) · 할 일의 세부 분류
         addColumn("category", "subtypes", "TEXT");

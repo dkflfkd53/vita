@@ -5,7 +5,7 @@ import { api } from '../api/client'
 import type { LinkedDay, WorkItemPatch } from '../api/types'
 import { Icon } from '../components/Icon'
 import { ErrorBox, Loading } from '../components/common'
-import { CategorySelect, DueDateInput, MemoEditor, PrioritySelect, SOURCE_LABEL, StatusSelect, TextCell } from '../components/workFields'
+import { CategorySelect, DueDateInput, MemoEditor, PrioritySelect, SOURCE_LABEL, StatusSelect, TextCell, TimeRangeInput } from '../components/workFields'
 import { fmtDateTime, fmtDayLong, fmtDuration, fmtShort, fmtUsd, weekLabel } from '../lib/format'
 
 export function WorkItemPage() {
@@ -54,6 +54,10 @@ export function WorkItemPage() {
         <span className="prop-k">마감일</span>
         <div>
           <DueDateInput value={item.dueDate} status={item.status} onSave={save} />
+        </div>
+        <span className="prop-k">시간</span>
+        <div>
+          <TimeRangeInput startAt={item.startAt} endAt={item.endAt} show={item.category === '회의'} onSave={save} />
         </div>
         <span className="prop-k">계획된 주</span>
         <div className="week-chips">

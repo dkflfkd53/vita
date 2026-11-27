@@ -12,7 +12,7 @@ class SubtypeGroupTest {
 
     private static ItemView item(long id, String subtype) {
         return new ItemView(id, "할 일 " + id, "앱", subtype, "MEDIUM", "IN_PROGRESS", null, null, null, null, null, true, 0,
-                List.of(), 0, List.of(), List.of());
+                List.of(), 0, List.of(), List.of(), null, null);
     }
 
     @Test
