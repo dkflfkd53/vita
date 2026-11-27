@@ -31,6 +31,8 @@ public class SchemaUpgrades {
         // 이 제안의 근거가 된 세션들(JSON [{title, taskKey, repo}])
         addColumn("agent_insight", "sessions", "TEXT");
         addColumn("agent_insight", "signals", "TEXT");
+        // 커밋 시각(committer date) — amend·rebase 해도 «그 명령을 친 시각»이라 세션 도구 호출과 맞춘다. 예전 행은 at(author date)로 대신
+        addColumn("git_commit", "committed_at", "TEXT");
         // 1 = 카테고리 통째로 숨김(보드·세션·리포트·AI 사용에서 빠짐, 기록은 남음)
         addColumn("category", "hidden", "INTEGER NOT NULL DEFAULT 0");
         addColumn("work_item", "subtype", "TEXT");

@@ -6,6 +6,7 @@ import type { AiConfig, ProjectRule, ReportTemplate, RoutineRule, SettingCategor
 import { Icon } from '../components/Icon'
 import { UpdateSection } from '../components/UpdatePanel'
 import { DeploySettings } from '../components/DeploySettings'
+import { GoogleSync } from '../components/GoogleSync'
 import { ErrorBox, Loading } from '../components/common'
 
 // 설정 — 카테고리 / 폴더 → 카테고리 / 반복 업무 세션 / 리포트 양식 / 주간보고 갈래 / AI 작성. 섹션마다 따로 저장한다
@@ -49,6 +50,7 @@ export function SettingsPage() {
           <WorkTextParts data={data} />
           <AiEngine data={data} />
           <DeploySettings />
+          <GoogleSync />
         </>
       )}
       <UpdateSection />

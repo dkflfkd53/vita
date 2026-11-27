@@ -76,6 +76,28 @@ CREATE TABLE IF NOT EXISTS git_commit (
 );
 CREATE INDEX IF NOT EXISTS idx_git_commit_day ON git_commit (day);
 
+-- 세션 ↔ 커밋. source = session(세션 안 git commit 도구 호출의 시작~끝 사이에 생긴 커밋, 확실)
+--                    | guess(세션 밖 커밋 — 같은 저장소, 세션 마지막 수정 뒤 6시간 안, 커밋 파일이 세션 수정 파일과 겹침)
+CREATE TABLE IF NOT EXISTS session_commit (
+    repo        TEXT NOT NULL,
+    hash        TEXT NOT NULL,
+    session_id  TEXT NOT NULL,
+    source      TEXT NOT NULL,
+    tool_use_id TEXT,
+    overlap     INTEGER,
+    linked_at   TEXT NOT NULL,
+    PRIMARY KEY (repo, hash)
+);
+CREATE INDEX IF NOT EXISTS idx_session_commit_session ON session_commit (session_id);
+
+-- 추정 연결을 이미 따져 본 커밋(붙을 세션이 없던 것도) — 매번 git show 를 다시 돌리지 않게
+CREATE TABLE IF NOT EXISTS commit_check (
+    repo       TEXT NOT NULL,
+    hash       TEXT NOT NULL,
+    checked_at TEXT NOT NULL,
+    PRIMARY KEY (repo, hash)
+);
+
 CREATE TABLE IF NOT EXISTS day_summary (
     day          TEXT PRIMARY KEY,
     overview     TEXT NOT NULL,
@@ -280,6 +302,16 @@ CREATE TABLE IF NOT EXISTS deploy_event (
     PRIMARY KEY (project, job_id)
 );
 CREATE INDEX IF NOT EXISTS idx_deploy_event_day ON deploy_event(day);
+
+-- 구글 캘린더에 올린 일정. uid = Vita 일정 uid, event_id = 구글 일정 id, hash = 마지막으로 보낸 내용(같으면 다시 안 보냄)
+CREATE TABLE IF NOT EXISTS google_cal_event (
+    uid       TEXT PRIMARY KEY,
+    event_id  TEXT NOT NULL,
+    start_ms  INTEGER NOT NULL,
+    hash      TEXT NOT NULL,
+    synced_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_google_cal_event_start ON google_cal_event (start_ms);
 
 -- ───────── 사용자 설정 ─────────
 -- 화면의 설정에서 바꾸는 값(JSON). key = projects | routines | work-text

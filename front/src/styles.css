@@ -1559,3 +1559,6 @@ a.deploy-ev:hover { color: var(--text); }
 .ics-row input { height: 30px; border: 1px solid var(--border); border-radius: 6px; padding: 0 6px; font: inherit; font-size: 13px; background: var(--bg); color: var(--text); flex: 1; min-width: 0; }
 .ics-pop .btn { justify-content: center; }
 .ics-pop ol { margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.6; }
+
+/* 설정 체크박스 한 줄 */
+.st-check { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }

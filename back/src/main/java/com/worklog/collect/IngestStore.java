@@ -145,8 +145,18 @@ public class IngestStore {
     }
 
     public int insertCommit(String repo, String hash, Instant at, LocalDate day, String subject) {
-        return jdbc.sql("INSERT OR IGNORE INTO git_commit (repo, hash, at, day, subject) VALUES (?, ?, ?, ?, ?)")
-                .params(repo, hash, at.toString(), day.toString(), subject).update();
+        return insertCommit(repo, hash, at, at, day, subject);
+    }
+
+    public int insertCommit(String repo, String hash, Instant at, Instant committedAt, LocalDate day, String subject) {
+        int n = jdbc.sql("INSERT OR IGNORE INTO git_commit (repo, hash, at, day, subject, committed_at) VALUES (?, ?, ?, ?, ?, ?)")
+                .params(repo, hash, at.toString(), day.toString(), subject, committedAt.toString()).update();
+        if (n == 0) {
+            // 예전에 committed_at 없이 들어온 행은 채워 둔다
+            jdbc.sql("UPDATE git_commit SET committed_at = ? WHERE repo = ? AND hash = ? AND committed_at IS NULL")
+                    .params(committedAt.toString(), repo, hash).update();
+        }
+        return n;
     }
 
     private static String str(Instant i) {

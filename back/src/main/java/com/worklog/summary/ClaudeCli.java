@@ -62,6 +62,22 @@ public class ClaudeCli {
         return result.path("result").asText();
     }
 
+    /**
+     * 정해 둔 MCP 도구만 허용하고 claude -p 를 돌린다(내장 도구는 끔, 세션 저장 안 함). 엔진 설정과 무관하게 항상 Claude.
+     * claude.ai 커넥터(예: 구글 캘린더)는 Claude Code 에 로그인한 계정의 연결을 그대로 쓴다.
+     */
+    public String askWithTools(String prompt, String model, List<String> allowedTools) throws IOException {
+        List<String> command = new ArrayList<>(launcher(resolveBin("claude", props.claudeBin())));
+        command.addAll(List.of("-p", "--model", model, "--no-session-persistence", "--output-format", "json", "--tools", "",
+                "--allowedTools", String.join(",", allowedTools)));
+        String out = run(command, prompt, "claude");
+        JsonNode result = MAPPER.readTree(out);
+        if (result.path("is_error").asBoolean(false)) {
+            throw new IOException("claude 오류: " + result.path("result").asText(out));
+        }
+        return result.path("result").asText();
+    }
+
     /** codex exec: 저장 안 하는 세션(--ephemeral), 읽기 전용 샌드박스, 마지막 답만 파일로 받는다 */
     private String askCodex(String prompt) throws IOException {
         Path outFile = Files.createTempFile("vita-codex-", ".txt");

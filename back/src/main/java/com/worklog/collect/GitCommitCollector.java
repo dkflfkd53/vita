@@ -55,19 +55,20 @@ public class GitCommitCollector {
                 .orElseGet(() -> Instant.now().minus(props.gitLookbackDays(), ChronoUnit.DAYS));
         Optional<String> out = git.run(root, List.of("log", "--all", "--no-merges",
                 "--author=" + author.get(), "--since=" + since,
-                "--pretty=format:%H" + SEP + "%aI" + SEP + "%s"));
+                "--pretty=format:%H" + SEP + "%aI" + SEP + "%cI" + SEP + "%s"));
         if (out.isEmpty()) {
             return 0;
         }
         int added = 0;
         for (String line : out.get().split("\n")) {
-            String[] f = line.split(String.valueOf(SEP), 3);
-            if (f.length < 3) {
+            String[] f = line.split(String.valueOf(SEP), 4);
+            if (f.length < 4) {
                 continue;
             }
             OffsetDateTime at = OffsetDateTime.parse(f[1]);
-            added += store.insertCommit(repo, f[0], at.toInstant(),
-                    LocalDate.ofInstant(at.toInstant(), props.zone()), f[2]);
+            OffsetDateTime committed = OffsetDateTime.parse(f[2]);
+            added += store.insertCommit(repo, f[0], at.toInstant(), committed.toInstant(),
+                    LocalDate.ofInstant(at.toInstant(), props.zone()), f[3]);
         }
         if (added > 0) {
             log.info("커밋 {}건 추가: {}", added, repo);

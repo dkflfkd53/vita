@@ -73,7 +73,23 @@ public class CalendarExportService {
      * 시간대별 — 작업 묶음(세션들)마다 요청·도구 호출·턴·수정 시각을 이어 붙여, 15분 넘게 비면 끊은 실제 일한 덩어리를
      * 시간 지정 일정으로. 5분 미만 덩어리는 뺀다. 배포는 실제 시각에 짧은 일정
      */
+    /** 시간대별 일정 하나 — uid 는 덩어리 시작 시각으로 고정(같은 덩어리가 길어져도 같은 일정) */
+    public record TimedEvent(String uid, long from, long to, String summary, String description, String url) {
+    }
+
     public String icsTimed(LocalDate from, LocalDate to) {
+        StringBuilder out = new StringBuilder();
+        head(out, "Vita 시간대");
+        String stamp = Instant.now().toString().replaceAll("[-:]", "").replaceAll("\\.\\d+", "");
+        for (TimedEvent e : timedEvents(from, to)) {
+            timed(out, e.uid(), stamp, e.from(), e.to(), e.summary(), e.description(), e.url());
+        }
+        line(out, "END:VCALENDAR");
+        return out.toString();
+    }
+
+    public List<TimedEvent> timedEvents(LocalDate from, LocalDate to) {
+        List<TimedEvent> result = new ArrayList<>();
         ObserverCalc.Data d = calc.load(from, to);
         TaskCatalog.Index index = catalog.build();
         Map<String, List<Span>> spans = new LinkedHashMap<>();
@@ -114,9 +130,6 @@ public class CalendarExportService {
                 edits.computeIfAbsent(k, x -> new ArrayList<>()).add(e);
             }
         }
-        StringBuilder out = new StringBuilder();
-        head(out, "Vita 시간대");
-        String stamp = Instant.now().toString().replaceAll("[-:]", "").replaceAll("\\.\\d+", "");
         spans.forEach((k, list) -> {
             TaskCatalog.Task task = index.tasks().get(k);
             String title = task == null ? k : task.title();
@@ -140,7 +153,7 @@ public class CalendarExportService {
                             .append(b.files.size() > 10 ? " 외 " + (b.files.size() - 10) + "개" : "").append('\n');
                 }
                 desc.append("\nVita에서 보기: ").append(APP).append("/sessions/").append(k);
-                timed(out, "vita-blk-" + k + "-" + b.from + "@vita", stamp, b.from, b.to, title, desc.toString(), APP + "/sessions/" + k);
+                result.add(new TimedEvent("vita-blk-" + k + "-" + b.from + "@vita", b.from, b.to, title, desc.toString(), APP + "/sessions/" + k));
             }
         });
         for (Event e : deploy.events(from.toString(), to.toString())) {
@@ -153,12 +166,11 @@ public class CalendarExportService {
                 start = end - MIN_BLOCK_MS;
             }
             boolean ok = "success".equals(e.status());
-            timed(out, "vita-dep-" + e.project().hashCode() + "-" + e.jobId() + "@vita", stamp, start, end,
+            result.add(new TimedEvent("vita-dep-" + e.project().hashCode() + "-" + e.jobId() + "@vita", start, end,
                     e.label() + (ok ? " ✓" : " ✕"), e.shortName() + " " + (e.sha() == null ? "" : e.sha()) + (ok ? " 성공" : " 실패(" + e.status() + ")")
-                            + (e.webUrl() == null ? "" : "\nGitLab: " + e.webUrl()), e.webUrl());
+                            + (e.webUrl() == null ? "" : "\nGitLab: " + e.webUrl()), e.webUrl()));
         }
-        line(out, "END:VCALENDAR");
-        return out.toString();
+        return result;
     }
 
     /** 구간들을 시작순으로 이어 붙이고, 15분 넘게 비면 끊는다. 5분 미만은 뺀다 */
