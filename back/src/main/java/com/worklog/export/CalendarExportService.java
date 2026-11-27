@@ -15,7 +15,13 @@ import java.util.Set;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 
+import com.worklog.agent.AgentStore.EventRow;
+import com.worklog.agent.AgentStore.ToolCallRow;
+import com.worklog.agent.ObserverCalc;
 import com.worklog.deploy.DeployService;
+import com.worklog.query.Rows.EditRow;
+import com.worklog.query.Rows.PromptRow;
+import com.worklog.query.TaskCatalog;
 import com.worklog.deploy.DeployService.Event;
 import com.worklog.query.Views.DayDetail;
 import com.worklog.query.Views.DaySession;
@@ -42,6 +48,186 @@ public class CalendarExportService {
     private final WorkQueryService query;
     private final DeployService deploy;
     private final JdbcClient jdbc;
+    private final ObserverCalc calc;
+    private final TaskCatalog catalog;
+
+    /** 이 간격 이하면 이어서 일한 것(작업 시간 계산과 같은 기준) */
+    private static final long GAP_MS = 15 * 60_000L;
+    /** 이보다 짧은 덩어리는 질문 하나 하고 끝난 것 — 캘린더를 어지럽혀 뺀다 */
+    private static final long MIN_BLOCK_MS = 5 * 60_000L;
+    /** 끝나지 않은 도구 호출 등 이상치 상한 */
+    private static final long TOOL_CAP_MS = 60 * 60_000L;
+    private static final DateTimeFormatter UTC = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(java.time.ZoneOffset.UTC);
+
+    private record Span(long from, long to) {
+    }
+
+    private static final class Block {
+        long from;
+        long to;
+        final List<String> prompts = new ArrayList<>();
+        final Set<String> files = new LinkedHashSet<>();
+    }
+
+    /**
+     * 시간대별 — 작업 묶음(세션들)마다 요청·도구 호출·턴·수정 시각을 이어 붙여, 15분 넘게 비면 끊은 실제 일한 덩어리를
+     * 시간 지정 일정으로. 5분 미만 덩어리는 뺀다. 배포는 실제 시각에 짧은 일정
+     */
+    public String icsTimed(LocalDate from, LocalDate to) {
+        ObserverCalc.Data d = calc.load(from, to);
+        TaskCatalog.Index index = catalog.build();
+        Map<String, List<Span>> spans = new LinkedHashMap<>();
+        Map<String, List<PromptRow>> prompts = new LinkedHashMap<>();
+        Map<String, List<EditRow>> edits = new LinkedHashMap<>();
+        java.util.function.Function<String, String> taskOf = sid -> index.taskOfSession().get(sid);
+        for (ToolCallRow c : d.tools()) {
+            String k = taskOf.apply(c.sessionId());
+            Long a = ms(c.startedAt());
+            if (k == null || a == null) {
+                continue;
+            }
+            Long b = ms(c.endedAt());
+            long end = b == null ? a : Math.min(b, a + TOOL_CAP_MS);
+            spans.computeIfAbsent(k, x -> new ArrayList<>()).add(new Span(a, Math.max(a, end)));
+        }
+        for (PromptRow p : d.prompts()) {
+            String k = taskOf.apply(p.sessionId());
+            Long a = ms(p.at());
+            if (k == null || a == null) {
+                continue;
+            }
+            spans.computeIfAbsent(k, x -> new ArrayList<>()).add(new Span(a, a));
+            prompts.computeIfAbsent(k, x -> new ArrayList<>()).add(p);
+        }
+        for (EventRow e : d.events()) {
+            String k = taskOf.apply(e.sessionId());
+            Long a = ms(e.at());
+            if (k != null && a != null) {
+                spans.computeIfAbsent(k, x -> new ArrayList<>()).add(new Span(a, a));
+            }
+        }
+        for (EditRow e : d.edits()) {
+            String k = taskOf.apply(e.sessionId());
+            Long a = ms(e.at());
+            if (k != null && a != null) {
+                spans.computeIfAbsent(k, x -> new ArrayList<>()).add(new Span(a, a));
+                edits.computeIfAbsent(k, x -> new ArrayList<>()).add(e);
+            }
+        }
+        StringBuilder out = new StringBuilder();
+        head(out, "Vita 시간대");
+        String stamp = Instant.now().toString().replaceAll("[-:]", "").replaceAll("\\.\\d+", "");
+        spans.forEach((k, list) -> {
+            TaskCatalog.Task task = index.tasks().get(k);
+            String title = task == null ? k : task.title();
+            for (Block b : blocks(list)) {
+                prompts.getOrDefault(k, List.of()).stream().filter(p -> in(ms(p.at()), b))
+                        .forEach(p -> b.prompts.add(oneLine(p.text(), 80)));
+                edits.getOrDefault(k, List.of()).stream().filter(e -> in(ms(e.at()), b))
+                        .forEach(e -> b.files.add(e.path().replaceAll(".*/", "")));
+                StringBuilder desc = new StringBuilder();
+                desc.append(task == null || task.project() == null ? "" : task.project() + " · ")
+                        .append(Math.round((b.to - b.from) / 60_000.0)).append("분\n");
+                if (!b.prompts.isEmpty()) {
+                    desc.append("\n요청:\n");
+                    b.prompts.stream().limit(5).forEach(t -> desc.append("- ").append(t).append('\n'));
+                    if (b.prompts.size() > 5) {
+                        desc.append("- …외 ").append(b.prompts.size() - 5).append("건\n");
+                    }
+                }
+                if (!b.files.isEmpty()) {
+                    desc.append("\n수정 파일: ").append(String.join(", ", b.files.stream().limit(10).toList()))
+                            .append(b.files.size() > 10 ? " 외 " + (b.files.size() - 10) + "개" : "").append('\n');
+                }
+                desc.append("\nVita에서 보기: ").append(APP).append("/sessions/").append(k);
+                timed(out, "vita-blk-" + k + "-" + b.from + "@vita", stamp, b.from, b.to, title, desc.toString(), APP + "/sessions/" + k);
+            }
+        });
+        for (Event e : deploy.events(from.toString(), to.toString())) {
+            Long end = ms(e.finishedAt());
+            if (end == null) {
+                continue;
+            }
+            long start = end - (e.duration() == null ? 0 : Math.round(e.duration() * 1000));
+            if (end - start < MIN_BLOCK_MS) {
+                start = end - MIN_BLOCK_MS;
+            }
+            boolean ok = "success".equals(e.status());
+            timed(out, "vita-dep-" + e.project().hashCode() + "-" + e.jobId() + "@vita", stamp, start, end,
+                    e.label() + (ok ? " ✓" : " ✕"), e.shortName() + " " + (e.sha() == null ? "" : e.sha()) + (ok ? " 성공" : " 실패(" + e.status() + ")")
+                            + (e.webUrl() == null ? "" : "\nGitLab: " + e.webUrl()), e.webUrl());
+        }
+        line(out, "END:VCALENDAR");
+        return out.toString();
+    }
+
+    /** 구간들을 시작순으로 이어 붙이고, 15분 넘게 비면 끊는다. 5분 미만은 뺀다 */
+    static List<Block> blocks(List<Span> spans) {
+        List<Span> sorted = new ArrayList<>(spans);
+        sorted.sort(java.util.Comparator.comparingLong(Span::from));
+        List<Block> out = new ArrayList<>();
+        Block cur = null;
+        for (Span s : sorted) {
+            if (cur != null && s.from() - cur.to <= GAP_MS) {
+                cur.to = Math.max(cur.to, s.to());
+                continue;
+            }
+            if (cur != null && cur.to - cur.from >= MIN_BLOCK_MS) {
+                out.add(cur);
+            }
+            cur = new Block();
+            cur.from = s.from();
+            cur.to = s.to();
+        }
+        if (cur != null && cur.to - cur.from >= MIN_BLOCK_MS) {
+            out.add(cur);
+        }
+        return out;
+    }
+
+    private static boolean in(Long t, Block b) {
+        return t != null && t >= b.from && t <= b.to;
+    }
+
+    private static Long ms(String iso) {
+        if (iso == null) {
+            return null;
+        }
+        try {
+            return Instant.parse(iso).toEpochMilli();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static String oneLine(String s, int max) {
+        String t = s == null ? "" : s.replaceAll("\\s+", " ").strip();
+        return t.length() > max ? t.substring(0, max) + "…" : t;
+    }
+
+    private static void head(StringBuilder out, String name) {
+        line(out, "BEGIN:VCALENDAR");
+        line(out, "VERSION:2.0");
+        line(out, "PRODID:-//Vita//Session calendar//KO");
+        line(out, "CALSCALE:GREGORIAN");
+        line(out, "METHOD:PUBLISH");
+        line(out, "X-WR-CALNAME:" + name);
+    }
+
+    private static void timed(StringBuilder out, String uid, String stamp, long from, long to, String summary, String desc, String url) {
+        line(out, "BEGIN:VEVENT");
+        line(out, "UID:" + uid);
+        line(out, "DTSTAMP:" + stamp);
+        line(out, "DTSTART:" + UTC.format(Instant.ofEpochMilli(from)));
+        line(out, "DTEND:" + UTC.format(Instant.ofEpochMilli(to)));
+        line(out, "SUMMARY:" + esc(summary));
+        line(out, "DESCRIPTION:" + esc(desc));
+        if (url != null) {
+            line(out, "URL:" + url);
+        }
+        line(out, "TRANSP:OPAQUE");
+        line(out, "END:VEVENT");
+    }
 
     private record DayEntry(LocalDate day, long sec, double cost, List<String> summaries, Set<String> sessionIds) {
     }

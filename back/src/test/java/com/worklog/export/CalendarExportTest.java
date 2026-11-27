@@ -37,4 +37,23 @@ class CalendarExportTest {
         assertThat(runs).hasSize(2);
         assertThat(runs.get(0)).hasSize(2);
     }
+
+    @Test
+    void timeBlocksSplitOnFifteenMinuteGapsAndDropShortOnes() throws Exception {
+        long m = 60_000L;
+        var ctor = Class.forName("com.worklog.export.CalendarExportService$Span").getDeclaredConstructors()[0];
+        ctor.setAccessible(true);
+        java.util.List<Object> spans = new java.util.ArrayList<>();
+        // 0~10분 일, 20분에 요청(간격 10분 → 이어짐), 40분짜리 빌드(20~60분) → 하나: 0~60분
+        spans.add(ctor.newInstance(0L, 10 * m));
+        spans.add(ctor.newInstance(20 * m, 20 * m));
+        spans.add(ctor.newInstance(20 * m, 60 * m));
+        // 80분 공백 뒤 2분짜리 → 5분 미만이라 뺌
+        spans.add(ctor.newInstance(140 * m, 142 * m));
+        // 200~230분 → 하나
+        spans.add(ctor.newInstance(200 * m, 230 * m));
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        var blocks = CalendarExportService.blocks((java.util.List) spans);
+        assertThat(blocks).hasSize(2);
+    }
 }
