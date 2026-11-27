@@ -223,7 +223,7 @@ public class WorkTextService {
                     for (ItemView it : e.getValue()) {
                         String per = period(it);
                         sb.append(" o ").append(reportName(it)).append(per.isEmpty() ? "" : " (" + per + ")")
-                                .append(" — ").append("DONE".equals(it.status()) ? "완료" : "진행중").append('\n');
+                                .append(" — ").append(statusDate(it)).append('\n');
                     }
                     continue;
                 }
@@ -234,12 +234,20 @@ public class WorkTextService {
                 sb.append(" o ").append(e.getKey()).append(' ').append(e.getValue().size()).append("건")
                         .append(per.isEmpty() ? "" : " (" + per + ")").append(" — ").append(doneOpen(e.getValue())).append('\n');
                 for (ItemView it : e.getValue()) {
-                    sb.append("   · ").append(reportName(it)).append('\n');
+                    sb.append("   · ").append(reportName(it)).append(" (").append(statusDate(it)).append(")\n");
                 }
             }
         }
         // 이슈는 사람이 적는 칸 — 비워 둔다
         return sb.toString().stripTrailing() + "\n\n[이슈]\n o \n";
+    }
+
+    /** 완료면 «11/27 완료», 아니면 «진행중 (~12/4 마감)» — 마감이 없으면 «진행중 (마감 미정)» */
+    static String statusDate(ItemView it) {
+        if ("DONE".equals(it.status())) {
+            return it.doneAt() == null ? "완료" : md(day(it.doneAt())) + " 완료";
+        }
+        return "진행중 (" + (it.dueDate() == null ? "마감 미정" : "~" + md(it.dueDate()) + " 마감") + ")";
     }
 
     /** «완료 2 · 진행 1» — 완료만이면 «완료 2», 진행만이면 «진행 1» */
@@ -351,7 +359,7 @@ public class WorkTextService {
                 }
                 for (ItemView it : e.getValue()) {
                     sb.append(pad).append(e.getKey() == null ? " o " : " · ").append(reportName(it))
-                            .append(it.dueDate() == null ? "" : " (~" + md(it.dueDate()) + ")").append('\n');
+                            .append(" (").append(it.dueDate() == null ? "마감 미정" : "~" + md(it.dueDate()) + " 마감").append(")\n");
                 }
             }
         }
@@ -749,9 +757,9 @@ public class WorkTextService {
         }
         if (part.next()) {
             return "입력의 [차주 계획 후보] 중 \"(" + part.title() + " 해당)\" 표시가 있는 것으로 다음 주에 할 일을 간결하게. 첫 줄 \"[" + part.title()
-                    + "] (M/D~M/D)\"(다음 주 월~금), 카테고리마다 빈 줄 뒤 \"■ 카테고리\"(세부 분류가 있는 카테고리만 \"■ 카테고리 — N건\"). 업무는 \" o 업무명 (~M/D)\"(마감이 없으면 괄호 없이), "
+                    + "] (M/D~M/D)\"(다음 주 월~금), 카테고리마다 빈 줄 뒤 \"■ 카테고리\"(세부 분류가 있는 카테고리만 \"■ 카테고리 — N건\"). 업무는 \" o 업무명 (~M/D 마감)\"(마감이 없으면 \"(마감 미정)\"), "
                     + "그 아래 \"   · \" 0~1줄로 이어서 할 일(\"~ 예정\" 체). 세부 분류가 있는 카테고리는 \" o 분류 N건\" 아래 \"   · 업무명 (~M/D)\"로 묶고, 할 일 없는 분류는 쓰지 않는다. "
-                    + "비슷한 작은 일은 한 줄로 묶는다. 한 줄은 띄어쓰기 포함 60자 이내(줄바꿈이 생기지 않게, 길면 다음 \"   · \" 줄로 나눈다). 완료된 일·이번 주 실적은 쓰지 않는다. 해당하는 할 일이 하나도 없으면 아무것도 쓰지 않는다(빈칸)";
+                    + "비슷한 작은 일은 한 줄로 묶는다. 한 줄은 띄어쓰기 포함 60자 이내(넘으면 내용은 줄이지 않고 같은 항목을 다음 줄에 공백 5칸 들여쓰기로 이어 쓴다, 새 \"·\" 로 나누지 않는다). 완료된 일·이번 주 실적은 쓰지 않는다. 해당하는 할 일이 하나도 없으면 아무것도 쓰지 않는다(빈칸)";
         }
         if ("commits".equals(part.def().source())) {
             String repos = part.def().repos().isEmpty() ? "관리하는 저장소" : String.join(", ", part.def().repos());
